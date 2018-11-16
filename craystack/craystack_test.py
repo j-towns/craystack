@@ -1,16 +1,14 @@
 import numpy as np
 import numpy.random as rng
 
-import craystack as cs
-import vectorans
+import craystack.craystack as cs
+import craystack.vectorans as vrans
 
 
 def check_codec(head_shape, codec, data):
-    message = vectorans.x_init(head_shape)
-    append, make_pop = codec
-    out_shape, pop = make_pop(head_shape)
+    message = vrans.x_init(head_shape)
+    append, pop = codec
     message_ = append(message, data)
-    assert cs.shape(message) == out_shape
     message_, data_ = pop(message_)
     assert_message_equal(message, message_)
     np.testing.assert_equal(data, data_)

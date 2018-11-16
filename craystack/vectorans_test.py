@@ -1,4 +1,4 @@
-import vectorans as vrans
+import craystack.vectorans as vrans
 import numpy as np
 
 
