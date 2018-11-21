@@ -1,5 +1,6 @@
 import numpy as np
 import craystack.vectorans as vrans
+import craystack.util as util
 
 
 def NonUniform(enc_statfun, dec_statfun, precision):
@@ -59,6 +60,12 @@ def NonUniform(enc_statfun, dec_statfun, precision):
 _uniform_enc_statfun = lambda s: (s, 1)
 _uniform_dec_statfun = lambda cf: cf
 
+def cdf_to_enc_statfun(cdf):
+    def enc_statfun(s):
+        lower = cdf(s)
+        return lower, cdf(s + 1) - lower
+    return enc_statfun
+
 def Uniform(precision):
     """
     Codec for symbols uniformly distributed over range(1 << precision).
@@ -116,6 +123,20 @@ def repeat(codec, n):
             message, symbol = pop_(message)
             symbols.append(symbol)
         return message, np.asarray(symbols)
+    return append, pop
+
+def substack(codec, view_fun):
+    append_, pop_ = codec
+    def append(message, data):
+        head, tail = message
+        subhead, update = util.view_update(head, view_fun)
+        subhead, tail = append_((subhead, tail), data)
+        return update(subhead), tail
+    def pop(message):
+        head, tail = message
+        subhead, update = util.view_update(head, view_fun)
+        (subhead, tail), data = pop_((subhead, tail))
+        return (update(subhead), tail), data
     return append, pop
 
 def shape(message):

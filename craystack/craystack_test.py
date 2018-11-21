@@ -40,8 +40,20 @@ def test_repeat():
     data = rng.randint(precision, size=(n_data,) + shape, dtype="uint64")
     check_codec(shape, cs.repeat(cs.Uniform(precision), n_data), data)
 
+def test_substack():
+    n_data = 100
+    prec = 4
+    head, tail = vrans.x_init((4, 4))
+    head = np.split(head, 2)
+    message = head, tail
+    data = rng.randint(1 << prec, size=(n_data, 2, 4), dtype='uint64')
+    view_fun = lambda h: h[0]
+    append, pop = cs.substack(cs.repeat(cs.Uniform(prec), n_data), view_fun)
+    message_ = append(message, data)
+    np.testing.assert_array_equal(message_[0][1], message[0][1])
+    message_, data_ = pop(message_)
+    np.testing.assert_equal(message, message_)
+    np.testing.assert_equal(data, data_)
+
 def assert_message_equal(message1, message2):
-    head1, m1 = message1
-    head2, m2 = message2
-    np.testing.assert_equal(head1, head2)
-    assert m1 == m2
+    np.testing.assert_equal(message1, message2)
