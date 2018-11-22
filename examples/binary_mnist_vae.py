@@ -67,10 +67,11 @@ init_message = other_bits_append(init_message, other_bits)
 
 # Encode the mnist images
 message = vae_append(init_message, images)
+
+flat_message = vrans.flatten(message)
 encode_t = time.time() - encode_t0
 
 print(f"All encoded in {encode_t:.2f}s")
-flat_message = vrans.flatten(message)
 
 message_len = 32 * len(flat_message)
 print(f"Used {message_len} bits.")
