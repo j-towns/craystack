@@ -65,6 +65,7 @@ init_message = vrans.x_init(obs_size + latent_size)
 other_bits = rng.randint(1 << 8, size=(3,) + latent_shape, dtype=np.uint64)
 init_message = other_bits_append(init_message, other_bits)
 
+# Encode the mnist images
 message = vae_append(init_message, images)
 encode_t = time.time() - encode_t0
 
