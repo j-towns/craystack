@@ -142,5 +142,5 @@ if __name__ == '__main__':
             model.reconstruct(recon_dataset, epoch)
             model.sample(epoch)
     except KeyboardInterrupt:
-        torch.save(model.state_dict(), 'saved_params/torch_binary_vae_params_new')
-    torch.save(model.state_dict(), 'saved_params/torch_binary_vae_params_new')
+        torch.save(model.state_dict(), 'vae_params')
+    torch.save(model.state_dict(), 'vae_params')
