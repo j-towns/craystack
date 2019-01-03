@@ -79,9 +79,9 @@ print(f"This is {message_len / num_pixels:.2f} bits per pixel.")
 
 
 ## Decode
+decode_t0 = time.time()
 message = vrans.unflatten(flat_message, obs_size + latent_size)
 
-decode_t0 = time.time()
 message, images_ = vae_pop(message)
 decode_t = time.time() - decode_t0
 
