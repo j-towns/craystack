@@ -55,5 +55,12 @@ def test_substack():
     np.testing.assert_equal(message, message_)
     np.testing.assert_equal(data, data_)
 
+def test_bernoulli():
+    precision = 4
+    shape = (2, 3, 5)
+    p = rng.random(shape)
+    data = np.uint64(rng.random(shape) < p)
+    check_codec(shape, cs.Bernoulli(p, precision), data)
+
 def assert_message_equal(message1, message2):
     np.testing.assert_equal(message1, message2)

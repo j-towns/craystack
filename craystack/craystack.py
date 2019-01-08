@@ -147,3 +147,60 @@ def shape(message):
         else:
             return np.shape(head)
     return _shape(head)
+
+# VAE observation codecs
+def _nearest_int(arr):
+    return np.uint64(np.ceil(arr - 0.5))
+
+def _ensure_nonzero_freq_bernoulli(p, precision):
+    p[p == 0] += 1
+    p[p == (1 << precision)] -=1
+    return p
+
+def _bernoulli_cdf(p, precision, safe=True):
+    def cdf(s):
+        ret = np.zeros(np.shape(s), "uint64")
+        onemp = _nearest_int((1 - p[s==1]) * (1 << precision))
+        onemp = (_ensure_nonzero_freq_bernoulli(onemp, precision) if safe
+                 else onemp)
+        ret[s == 1] += onemp
+        ret[s == 2] = 1 << precision
+        return ret
+    return cdf
+
+def _bernoulli_ppf(p, precision, safe=True):
+    onemp = _nearest_int((1 - p) * (1 << precision))
+    onemp = _ensure_nonzero_freq_bernoulli(onemp, precision) if safe else onemp
+    return lambda cf: np.uint64((cf + 0.5) > onemp)
+
+def Bernoulli(p, prec):
+    enc_statfun = cdf_to_enc_statfun(_bernoulli_cdf(p, prec))
+    dec_statfun = _bernoulli_ppf(p, prec)
+    return NonUniform(enc_statfun, dec_statfun, prec)
+
+def _ensure_nonzero_freq(probs, precision):
+    probs = np.rint(probs * (1 << precision)).astype('uint64')
+    probs[probs == 0] = 1
+    probs[np.argmax(probs)] += (1 << precision) - np.sum(probs)
+    return np.cumsum(probs)
+
+def _categorical_cdf(probs, precision):
+    def cdf(s):
+        cumulative_buckets = _ensure_nonzero_freq(probs, precision)
+        return int(cumulative_buckets[s - 1]) if s else 0
+    return cdf
+
+def _categorical_ppf(probs, precision):
+    def ppf(cf):
+        cumulative_buckets = _ensure_nonzero_freq(probs, precision)
+        return np.searchsorted(cumulative_buckets, cf, 'right')
+    return ppf
+
+def Categorical(p, prec):
+    """Assume that the last dim of probs contains the probability vectors,
+    i.e. np.sum(p, axis=-1) == ones"""
+    # Flatten all but last dim of probs
+    p = np.reshape(p, (-1, np.shape(probs)[-1]))
+    enc_statfun = cdf_to_enc_statfun(_categorical_cdf(p, prec))
+    dec_statfun = _categorical_ppf(p, prec)
+    return NonUniform(enc_statfun, dec_statfun, prec)

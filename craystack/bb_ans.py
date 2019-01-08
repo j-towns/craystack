@@ -59,10 +59,6 @@ def VAE(gen_net, rec_net, obs_codec, prior_prec=8, latent_prec=12):
             post_mean, post_stdd, prior_prec, latent_prec), z_view)
     return BBANS(prior, likelihood, posterior)
 
-def _nearest_int(arr):
-    # This will break when vectorized
-    return np.uint64(np.ceil(arr - 0.5))
-
 std_gaussian_bucket_cache = {}  # Stores bucket endpoints
 std_gaussian_centres_cache = {}  # Stores bucket centres
 
@@ -94,7 +90,7 @@ def std_gaussian_centres(precision):
 def _gaussian_latent_cdf(mean, stdd, prior_prec, post_prec):
     def cdf(idx):
         x = std_gaussian_buckets(prior_prec)[idx]
-        return _nearest_int(norm.cdf(x, mean, stdd) * (1 << post_prec))
+        return cs._nearest_int(norm.cdf(x, mean, stdd) * (1 << post_prec))
     return cdf
 
 def _gaussian_latent_ppf(mean, stdd, prior_prec, post_prec):
@@ -111,31 +107,3 @@ def _DiagGaussianLatent(mean, stdd, prior_prec, post_prec):
         _gaussian_latent_cdf(mean, stdd, prior_prec, post_prec))
     dec_statfun = _gaussian_latent_ppf(mean, stdd, prior_prec, post_prec)
     return cs.NonUniform(enc_statfun, dec_statfun, post_prec)
-
-
-# VAE observation codecs
-def _ensure_nonzero_freq_bernoulli(p, precision):
-    p[p == 0] += 1
-    p[p == (1 << precision)] -=1
-    return p
-
-def _bernoulli_cdf(p, precision, safe=True):
-    def cdf(s):
-        ret = np.zeros(np.shape(s), "uint64")
-        onemp = _nearest_int((1 - p[s==1]) * (1 << precision))
-        onemp = (_ensure_nonzero_freq_bernoulli(onemp, precision) if safe
-                 else onemp)
-        ret[s == 1] += onemp
-        ret[s == 2] = 1 << precision
-        return ret
-    return cdf
-
-def _bernoulli_ppf(p, precision, safe=True):
-    onemp = _nearest_int((1 - p) * (1 << precision))
-    onemp = _ensure_nonzero_freq_bernoulli(onemp, precision) if safe else onemp
-    return lambda cf: np.uint64((cf + 0.5) > onemp)
-
-def Bernoulli(p, prec):
-    enc_statfun = cs.cdf_to_enc_statfun(_bernoulli_cdf(p, prec))
-    dec_statfun = _bernoulli_ppf(p, prec)
-    return cs.NonUniform(enc_statfun, dec_statfun, prec)
