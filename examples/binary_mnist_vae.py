@@ -71,11 +71,11 @@ message = vae_append(init_message, images)
 flat_message = vrans.flatten(message)
 encode_t = time.time() - encode_t0
 
-print(f"All encoded in {encode_t:.2f}s")
+print("All encoded in {:.2f}s".format(encode_t))
 
 message_len = 32 * len(flat_message)
-print(f"Used {message_len} bits.")
-print(f"This is {message_len / num_pixels:.2f} bits per pixel.")
+print("Used {} bits.".format(message_len))
+print("This is {:.2f} bits per pixel.".format(message_len / num_pixels))
 
 
 ## Decode
@@ -85,7 +85,7 @@ message = vrans.unflatten(flat_message, obs_size + latent_size)
 message, images_ = vae_pop(message)
 decode_t = time.time() - decode_t0
 
-print(f'All decoded in {decode_t:.2f}s')
+print('All decoded in {:.2f}s'.format(decode_t))
 
 np.testing.assert_equal(images, images_)
 np.testing.assert_equal(message, init_message)
