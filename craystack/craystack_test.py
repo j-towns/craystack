@@ -55,5 +55,21 @@ def test_substack():
     np.testing.assert_equal(message, message_)
     np.testing.assert_equal(data, data_)
 
+def test_bernoulli():
+    precision = 4
+    shape = (2, 3, 5)
+    p = rng.random(shape)
+    data = np.uint64(rng.random(shape) < p)
+    check_codec(shape, cs.Bernoulli(p, precision), data)
+
+def test_categorical():
+    precision = 4
+    shape = (2, 3, 5)
+    ps = rng.random((np.prod(shape), 4))
+    ps = ps / np.sum(ps, axis=-1, keepdims=True)
+    data = np.reshape([rng.choice(4, p=p) for p in ps], shape)
+    ps = np.reshape(ps, shape + (4,))
+    check_codec(shape, cs.Categorical(ps, precision), data)
+
 def assert_message_equal(message1, message2):
     np.testing.assert_equal(message1, message2)

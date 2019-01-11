@@ -147,3 +147,73 @@ def shape(message):
         else:
             return np.shape(head)
     return _shape(head)
+
+# VAE observation codecs
+def _nearest_int(arr):
+    return np.uint64(np.ceil(arr - 0.5))
+
+def _ensure_nonzero_freq_bernoulli(p, precision):
+    p[p == 0] += 1
+    p[p == (1 << precision)] -=1
+    return p
+
+def _bernoulli_cdf(p, precision, safe=True):
+    def cdf(s):
+        ret = np.zeros(np.shape(s), "uint64")
+        onemp = _nearest_int((1 - p[s==1]) * (1 << precision))
+        onemp = (_ensure_nonzero_freq_bernoulli(onemp, precision) if safe
+                 else onemp)
+        ret[s == 1] += onemp
+        ret[s == 2] = 1 << precision
+        return ret
+    return cdf
+
+def _bernoulli_ppf(p, precision, safe=True):
+    onemp = _nearest_int((1 - p) * (1 << precision))
+    onemp = _ensure_nonzero_freq_bernoulli(onemp, precision) if safe else onemp
+    return lambda cf: np.uint64((cf + 0.5) > onemp)
+
+def Bernoulli(p, prec):
+    enc_statfun = cdf_to_enc_statfun(_bernoulli_cdf(p, prec))
+    dec_statfun = _bernoulli_ppf(p, prec)
+    return NonUniform(enc_statfun, dec_statfun, prec)
+
+def _ensure_nonzero_freq(probs, precision):
+    probs = np.rint(probs * (1 << precision)).astype('uint64')
+    probs[probs == 0] = 1
+    # TODO(@j-towns): look at simplifying this
+    # Normalize the probabilities by decreasing the maxes
+    argmax_idxs = np.argmax(probs, axis=-1)[..., np.newaxis]
+    lowered_maxes = (np.take_along_axis(probs, argmax_idxs, axis=-1)
+                     + (1 << precision) - np.sum(probs, axis=-1, keepdims=True))
+    np.put_along_axis(probs, argmax_idxs, lowered_maxes, axis=-1)
+    return np.concatenate((np.zeros(np.shape(probs)[:-1] + (1,), dtype='uint64'),
+                           np.cumsum(probs, axis=-1)), axis=-1)
+
+def _categorical_cdf(probs, precision, safe=False):
+    def cdf(s):
+        cumulative_buckets = _ensure_nonzero_freq(probs, precision)
+        ret = np.take_along_axis(cumulative_buckets, s[..., np.newaxis],
+                                 axis=-1)
+        return ret[..., 0]
+    return cdf
+
+def _categorical_ppf(probs, precision):
+    def ppf(cfs):
+        cumulative_buckets = _ensure_nonzero_freq(probs, precision)
+        *shape, n = np.shape(cumulative_buckets)
+        cumulative_buckets = np.reshape(cumulative_buckets, (-1, n))
+        cfs                = np.ravel(cfs)
+        ret = np.array(
+            [np.searchsorted(bucket, cf, 'right') - 1 for bucket, cf in
+             zip(cumulative_buckets, cfs)])
+        return np.reshape(ret, shape)
+    return ppf
+
+def Categorical(p, prec):
+    """Assume that the last dim of probs contains the probability vectors,
+    i.e. np.sum(p, axis=-1) == ones"""
+    # Flatten all but last dim of probs
+    enc_statfun = cdf_to_enc_statfun(_categorical_cdf(p, prec))
+    dec_statfun = _categorical_ppf(p, prec)
+    return NonUniform(enc_statfun, dec_statfun, prec)
