@@ -21,3 +21,24 @@ The codecs in Craystack are
    in series.
  - **Stacky**, meaning last-in-first-out (LIFO). The last item that an encoder
    compresses will be the first item that a decoder decompresses.
+
+# Installation
+To install craystack:
+
+```bash
+git clone git@github.com:j-towns/craystack.git
+cd craystack
+pip install -e .
+```
+
+Then to run the tests do
+
+```bash
+pytest
+```
+
+you may have to install pytest with
+
+```bash
+pip install pytest
+```
