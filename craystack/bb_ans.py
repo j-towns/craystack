@@ -103,7 +103,7 @@ def _gaussian_latent_ppf(mean, stdd, prior_prec, post_prec):
     return ppf
 
 def _DiagGaussianLatent(mean, stdd, prior_prec, post_prec):
-    enc_statfun = cs.cdf_to_enc_statfun(
+    enc_statfun = cs._cdf_to_enc_statfun(
         _gaussian_latent_cdf(mean, stdd, prior_prec, post_prec))
     dec_statfun = _gaussian_latent_ppf(mean, stdd, prior_prec, post_prec)
     return cs.NonUniform(enc_statfun, dec_statfun, post_prec)
