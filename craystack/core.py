@@ -220,21 +220,22 @@ def Categorical(p, prec):
     return NonUniform(enc_statfun, dec_statfun, prec)
 
 def PixelCNN(pixelcnn_fn, pixelcnn_shape, elem_codec):
-    n_batch, n_ch, h, w = pixelcnn_shape
+    _, n_ch, h, w = pixelcnn_shape
+    elem_idxs = list(product(range(h), range(w), range(n_ch)))
     def append(message, images):
         all_params = pixelcnn_fn(images)
-        for y, x, ch in reversed(product(range(h), range(w), range(n_ch))):
-            pixel_params = all_params[:, ch, y, x]
-            elem_append, _ = elem_codec(pixel_params)
+        for y, x, ch in reversed(elem_idxs):
+            elem_params = all_params[:, ch, y, x]
+            elem_append, _ = elem_codec(elem_params)
             message = elem_append(message, images[:, ch, y, x])
         return message
     def pop(message):
         images = np.zeros(pixelcnn_shape, dtype=np.int32)
-        for y, x, ch in product(range(h), range(w), range(n_ch)):
-            all_params = pixelcnn(images)
-            pixel_params = all_params[:, ch, y, x]
-            _, elem_pop = elem_codec(pixel_params)
-            message, pixel = elem_pop(message)
-            images[:, ch, y, x] = pixel
+        for y, x, ch in elem_idxs:
+            all_params = pixelcnn_fn(images)
+            elem_params = all_params[:, ch, y, x]
+            _, elem_pop = elem_codec(elem_params)
+            message, elem = elem_pop(message)
+            images[:, ch, y, x] = elem
         return message, images
     return append, pop
