@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.stats import norm
-import craystack.craystack as cs
+import craystack as cs
 
 
 def BBANS(prior, likelihood, posterior):

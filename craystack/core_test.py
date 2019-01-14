@@ -1,7 +1,7 @@
 import numpy as np
 import numpy.random as rng
 
-import craystack.craystack as cs
+import craystack as cs
 import craystack.vectorans as vrans
 
 
