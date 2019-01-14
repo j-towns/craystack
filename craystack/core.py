@@ -1,3 +1,4 @@
+from itertools import product
 import numpy as np
 import craystack.vectorans as vrans
 import craystack.util as util
@@ -217,3 +218,23 @@ def Categorical(p, prec):
     enc_statfun = _cdf_to_enc_statfun(_categorical_cdf(p, prec))
     dec_statfun = _categorical_ppf(p, prec)
     return NonUniform(enc_statfun, dec_statfun, prec)
+
+def PixelCNN(pixelcnn_fn, pixelcnn_shape, elem_codec):
+    n_batch, n_ch, h, w = pixelcnn_shape
+    def append(message, images):
+        all_params = pixelcnn_fn(images)
+        for y, x, ch in reversed(product(range(h), range(w), range(n_ch))):
+            pixel_params = all_params[:, ch, y, x]
+            elem_append, _ = elem_codec(pixel_params)
+            message = elem_append(message, images[:, ch, y, x])
+        return message
+    def pop(message):
+        images = np.zeros(pixelcnn_shape, dtype=np.int32)
+        for y, x, ch in product(range(h), range(w), range(n_ch)):
+            all_params = pixelcnn(images)
+            pixel_params = all_params[:, ch, y, x]
+            _, elem_pop = elem_codec(pixel_params)
+            message, pixel = elem_pop(message)
+            images[:, ch, y, x] = pixel
+        return message, images
+    return append, pop
