@@ -60,7 +60,7 @@ def NonUniform(enc_statfun, dec_statfun, precision):
 _uniform_enc_statfun = lambda s: (s, 1)
 _uniform_dec_statfun = lambda cf: cf
 
-def cdf_to_enc_statfun(cdf):
+def _cdf_to_enc_statfun(cdf):
     def enc_statfun(s):
         lower = cdf(s)
         return lower, cdf(s + 1) - lower
@@ -174,7 +174,7 @@ def _bernoulli_ppf(p, precision, safe=True):
     return lambda cf: np.uint64((cf + 0.5) > onemp)
 
 def Bernoulli(p, prec):
-    enc_statfun = cdf_to_enc_statfun(_bernoulli_cdf(p, prec))
+    enc_statfun = _cdf_to_enc_statfun(_bernoulli_cdf(p, prec))
     dec_statfun = _bernoulli_ppf(p, prec)
     return NonUniform(enc_statfun, dec_statfun, prec)
 
@@ -214,6 +214,6 @@ def Categorical(p, prec):
     """Assume that the last dim of probs contains the probability vectors,
     i.e. np.sum(p, axis=-1) == ones"""
     # Flatten all but last dim of probs
-    enc_statfun = cdf_to_enc_statfun(_categorical_cdf(p, prec))
+    enc_statfun = _cdf_to_enc_statfun(_categorical_cdf(p, prec))
     dec_statfun = _categorical_ppf(p, prec)
     return NonUniform(enc_statfun, dec_statfun, prec)
