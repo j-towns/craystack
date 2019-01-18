@@ -2,6 +2,7 @@ from itertools import product
 import numpy as np
 import craystack.vectorans as vrans
 import craystack.util as util
+from scipy.special import expit as sigmoid
 
 
 def NonUniform(enc_statfun, dec_statfun, precision):
@@ -192,18 +193,18 @@ def _ensure_nonzero_freq(probs, precision):
                            np.cumsum(probs, axis=-1)), axis=-1)
 
 def _categorical_cdf(probs, precision, safe=False):
+    cumulative_buckets = _ensure_nonzero_freq(probs, precision)
     def cdf(s):
-        cumulative_buckets = _ensure_nonzero_freq(probs, precision)
         ret = np.take_along_axis(cumulative_buckets, s[..., np.newaxis],
                                  axis=-1)
         return ret[..., 0]
     return cdf
 
 def _categorical_ppf(probs, precision):
+    cumulative_buckets = _ensure_nonzero_freq(probs, precision)
+    *shape, n = np.shape(cumulative_buckets)
+    cumulative_buckets = np.reshape(cumulative_buckets, (-1, n))
     def ppf(cfs):
-        cumulative_buckets = _ensure_nonzero_freq(probs, precision)
-        *shape, n = np.shape(cumulative_buckets)
-        cumulative_buckets = np.reshape(cumulative_buckets, (-1, n))
         cfs                = np.ravel(cfs)
         ret = np.array(
             [np.searchsorted(bucket, cf, 'right') - 1 for bucket, cf in
@@ -212,11 +213,59 @@ def _categorical_ppf(probs, precision):
     return ppf
 
 def Categorical(p, prec):
-    """Assume that the last dim of probs contains the probability vectors,
+    """Assume that the last dim of p contains the probability vectors,
     i.e. np.sum(p, axis=-1) == ones"""
     # Flatten all but last dim of probs
     enc_statfun = _cdf_to_enc_statfun(_categorical_cdf(p, prec))
     dec_statfun = _categorical_ppf(p, prec)
+    return NonUniform(enc_statfun, dec_statfun, prec)
+
+def _logistic_mixture_probs(theta):
+
+
+
+    probs = None
+    return probs
+
+def _logistic_mixture_cdf(theta, prec):
+    nr_mix = 10
+    x_shape = (10, 3)  # batch x channels
+    theta_shape = theta.shape
+    # logit_probs, means, log_scales, coeffs = np.split(theta, 4)
+    # log_scales = np.clip(log_scales, -7., np.inf)
+    # coeffs = np.tanh(coeffs)
+
+    logit_probs = theta[..., :nr_mix]
+    theta = np.reshape(theta[..., nr_mix:], x_shape + (nr_mix * 3,))
+    means = theta[..., :nr_mix]
+    log_scales = np.maximum(theta[..., nr_mix:2 * nr_mix], -7.)
+    coeffs = np.tanh(theta[..., 2 * nr_mix:3 * nr_mix])
+
+    def cdf(x):
+        x = np.reshape(x, x_shape + (1,))
+        # here and below: getting the means and adjusting them based on preceding sub-pixels
+        m2 = np.reshape(means[..., 1, :] + coeffs[..., 0, :] * x[..., 0, :],
+                        [x_shape[0], 1, nr_mix])
+        m3 = np.reshape(
+            means[...,2, :] + coeffs[...,1, :] * x[...,0, :] + coeffs[...,2, :] * x[...,1, :],
+            [x_shape[0], 1, nr_mix])
+        means_ = np.concatenate([np.reshape(means[...,0, :], [x_shape[0], 1, nr_mix]), m2, m3], 1)
+        centered_x = x - means_
+        inv_stdv = np.exp(-log_scales)
+        plus_in = inv_stdv * (centered_x + 1. / 255.)
+        cdf_plus = sigmoid(plus_in)
+        return cdf_plus
+    return cdf
+
+def _logistic_mixture_ppf(theta, prec):
+    # go from theta to probs
+    probs = None
+    # return _categorical_ppf(probs, prec)
+    return lambda x: None
+
+def LogisticMixture(theta, prec):
+    enc_statfun = _cdf_to_enc_statfun(_logistic_mixture_cdf(theta, prec))
+    dec_statfun = _logistic_mixture_ppf(theta, prec)
     return NonUniform(enc_statfun, dec_statfun, prec)
 
 def PixelCNN(pixelcnn_fn, pixelcnn_shape, elem_codec):
@@ -237,5 +286,26 @@ def PixelCNN(pixelcnn_fn, pixelcnn_shape, elem_codec):
             _, elem_pop = elem_codec(elem_params)
             message, elem = elem_pop(message)
             images[:, ch, y, x] = elem
+        return message, images
+    return append, pop
+
+def PixelCNNpp(pixelcnn_fn, pixelcnn_shape, elem_codec):
+    _, h, w, n_ch = pixelcnn_shape
+    elem_idxs = list(product(range(h), range(w)))
+    def append(message, images):
+        all_params = pixelcnn_fn(images)
+        for y, x in reversed(elem_idxs):
+            elem_params = all_params[:, y, x]
+            elem_append, _ = elem_codec(elem_params)
+            message = elem_append(message, images[:, y, x])
+        return message
+    def pop(message):
+        images = np.zeros(pixelcnn_shape, dtype=np.int32)
+        for y, x in elem_idxs:
+            all_params = pixelcnn_fn(images)
+            elem_params = all_params[:, y, x]
+            _, elem_pop = elem_codec(elem_params)
+            message, elem = elem_pop(message)
+            images[:, y, x] = elem
         return message, images
     return append, pop
