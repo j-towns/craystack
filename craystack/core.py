@@ -220,38 +220,12 @@ def Categorical(p, prec):
     dec_statfun = _categorical_ppf(p, prec)
     return NonUniform(enc_statfun, dec_statfun, prec)
 
-def _logistic_mixture_probs(theta):
-
-
-
-    probs = None
-    return probs
-
 def _logistic_mixture_cdf(theta, prec):
-    nr_mix = 10
-    x_shape = (10, 3)  # batch x channels
-    theta_shape = theta.shape
-    # logit_probs, means, log_scales, coeffs = np.split(theta, 4)
-    # log_scales = np.clip(log_scales, -7., np.inf)
-    # coeffs = np.tanh(coeffs)
+    means, log_scales, coeffs, logit_probs = np.split(theta, 4, axis=-1)
+    inv_stdv = np.exp(-log_scales)
 
-    logit_probs = theta[..., :nr_mix]
-    theta = np.reshape(theta[..., nr_mix:], x_shape + (nr_mix * 3,))
-    means = theta[..., :nr_mix]
-    log_scales = np.maximum(theta[..., nr_mix:2 * nr_mix], -7.)
-    coeffs = np.tanh(theta[..., 2 * nr_mix:3 * nr_mix])
-
-    def cdf(x):
-        x = np.reshape(x, x_shape + (1,))
-        # here and below: getting the means and adjusting them based on preceding sub-pixels
-        m2 = np.reshape(means[..., 1, :] + coeffs[..., 0, :] * x[..., 0, :],
-                        [x_shape[0], 1, nr_mix])
-        m3 = np.reshape(
-            means[...,2, :] + coeffs[...,1, :] * x[...,0, :] + coeffs[...,2, :] * x[...,1, :],
-            [x_shape[0], 1, nr_mix])
-        means_ = np.concatenate([np.reshape(means[...,0, :], [x_shape[0], 1, nr_mix]), m2, m3], 1)
+    def cdf(s):
         centered_x = x - means_
-        inv_stdv = np.exp(-log_scales)
         plus_in = inv_stdv * (centered_x + 1. / 255.)
         cdf_plus = sigmoid(plus_in)
         return cdf_plus
@@ -264,6 +238,7 @@ def _logistic_mixture_ppf(theta, prec):
     return lambda x: None
 
 def LogisticMixture(theta, prec):
+    """theta: means, log_scales, coeffs, logit_probs"""
     enc_statfun = _cdf_to_enc_statfun(_logistic_mixture_cdf(theta, prec))
     dec_statfun = _logistic_mixture_ppf(theta, prec)
     return NonUniform(enc_statfun, dec_statfun, prec)
@@ -307,5 +282,33 @@ def PixelCNNpp(pixelcnn_fn, pixelcnn_shape, elem_codec):
             _, elem_pop = elem_codec(elem_params)
             message, elem = elem_pop(message)
             images[:, y, x] = elem
+        return message, images
+    return append, pop
+
+def AutoRegressive(elem_param_fn, data_shape, iterate_idxs, elem_codec):
+    elem_idxs = list(product(*[range(data_shape[x]) for x in iterate_idxs]))
+
+    def get_idxs(partial_idxs):
+        idxs = [slice(None) for _ in range(len(data_shape))]
+        for k, iterate_idx in enumerate(iterate_idxs):
+            idxs[iterate_idx] = partial_idxs[k]
+        return idxs
+
+    def append(message, data):
+        all_params = elem_param_fn(data)
+        for idxs in reversed(elem_idxs):
+            elem_params = all_params[get_idxs(idxs)]
+            elem_append, _ = elem_codec(elem_params)
+            message = elem_append(message, data[get_idxs(idxs)])
+        return message
+
+    def pop(message):
+        data = np.zeros(data_shape, dtype=np.int32)
+        for idxs in elem_idxs:
+            all_params = elem_param_fn(data)
+            elem_params = all_params[get_idxs(idxs)]
+            _, elem_pop = elem_codec(elem_params)
+            message, elem = elem_pop(message)
+            data[get_idxs(idxs)] = elem
         return message, images
     return append, pop
