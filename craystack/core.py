@@ -222,7 +222,7 @@ def Categorical(p, prec):
 
 def _create_logistic_mixture_buckets(means, log_scales, logit_probs, prec):
     inv_stdv = np.exp(-log_scales)
-    buckets = np.linspace(-1, 1, 257)
+    buckets = np.linspace(-1, 1, 257)  # TODO: change hardcoding
     buckets = np.broadcast_to(buckets, means.shape + (257,))
     cdfs = inv_stdv[..., np.newaxis] *(buckets - means[..., np.newaxis])
     cdfs[..., 0] = -np.inf
@@ -248,6 +248,8 @@ def _logistic_mixture_ppf(theta, prec):
     means, log_scales, logit_probs = np.split(theta, 3, axis=-1)
     cumulative_buckets = _create_logistic_mixture_buckets(means, log_scales,
                                                           logit_probs, prec)
+    *shape, n = np.shape(cumulative_buckets)
+    cumulative_buckets = np.reshape(cumulative_buckets, (-1, n))
     def ppf(cfs):
         cfs = np.ravel(cfs)
         ret = np.array(
@@ -308,5 +310,5 @@ def AutoRegressive(elem_param_fn, data_shape, iterate_idxs, elem_codec):
             _, elem_pop = elem_codec(elem_params)
             message, elem = elem_pop(message)
             data[get_idxs(idxs)] = elem
-        return message, images
+        return message, data
     return append, pop

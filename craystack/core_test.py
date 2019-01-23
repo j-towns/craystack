@@ -71,5 +71,17 @@ def test_categorical():
     ps = np.reshape(ps, shape + (4,))
     check_codec(shape, cs.Categorical(ps, precision), data)
 
+def test_logistic_mixture():
+    rng = np.random.RandomState(1)  # works for 0, fails for 1
+    precision = 8
+    batch_size = 2
+    nr_mix = 3
+    shape = (batch_size, nr_mix)  # last axis needs to be divisible by 3
+    means, log_scales, logit_probs = rng.randn(*shape), rng.randn(*shape), rng.randn(*shape)
+    log_scales = log_scales - np.max(log_scales) - 2  # need these negative
+    theta = np.concatenate((means, log_scales, logit_probs), axis=-1)
+    data = np.array([rng.choice(256) for _ in range(batch_size)])
+    check_codec((shape[0], ), cs.LogisticMixture(theta, precision), data)
+
 def assert_message_equal(message1, message2):
     np.testing.assert_equal(message1, message2)
