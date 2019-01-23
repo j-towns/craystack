@@ -220,22 +220,41 @@ def Categorical(p, prec):
     dec_statfun = _categorical_ppf(p, prec)
     return NonUniform(enc_statfun, dec_statfun, prec)
 
-def _logistic_mixture_cdf(theta, prec):
-    means, log_scales, coeffs, logit_probs = np.split(theta, 4, axis=-1)
+def _create_logistic_mixture_buckets(means, log_scales, logit_probs, prec):
     inv_stdv = np.exp(-log_scales)
+    buckets = np.linspace(-1, 1, 257)
+    buckets = np.broadcast_to(buckets, means.shape + (257,))
+    cdfs = inv_stdv[..., np.newaxis] *(buckets - means[..., np.newaxis])
+    cdfs[..., 0] = -np.inf
+    cdfs[..., -1] = np.inf
+    cdfs = sigmoid(cdfs)
+    prob_cpts = cdfs[..., 1:] - cdfs[..., :-1]
+    mixture_probs = util.softmax(logit_probs, axis=1)
+    probs = np.sum(prob_cpts * mixture_probs[..., np.newaxis], axis=1)
+    return _ensure_nonzero_freq(probs, prec)
 
+def _logistic_mixture_cdf(theta, prec):
+    """cdf of mixture is mixture of cdf"""
+    means, log_scales, logit_probs = np.split(theta, 3, axis=-1)
+    cumulative_buckets = _create_logistic_mixture_buckets(means, log_scales,
+                                                          logit_probs, prec)
     def cdf(s):
-        centered_x = x - means_
-        plus_in = inv_stdv * (centered_x + 1. / 255.)
-        cdf_plus = sigmoid(plus_in)
-        return cdf_plus
+        ret = np.take_along_axis(cumulative_buckets, s[..., np.newaxis],
+                                 axis=-1)
+        return ret[..., 0]
     return cdf
 
 def _logistic_mixture_ppf(theta, prec):
-    # go from theta to probs
-    probs = None
-    # return _categorical_ppf(probs, prec)
-    return lambda x: None
+    means, log_scales, logit_probs = np.split(theta, 3, axis=-1)
+    cumulative_buckets = _create_logistic_mixture_buckets(means, log_scales,
+                                                          logit_probs, prec)
+    def ppf(cfs):
+        cfs = np.ravel(cfs)
+        ret = np.array(
+            [np.searchsorted(bucket, cf, 'right') - 1 for bucket, cf in
+             zip(cumulative_buckets, cfs)])
+        return np.reshape(ret, shape)
+    return ppf
 
 def LogisticMixture(theta, prec):
     """theta: means, log_scales, coeffs, logit_probs"""
@@ -264,27 +283,6 @@ def PixelCNN(pixelcnn_fn, pixelcnn_shape, elem_codec):
         return message, images
     return append, pop
 
-def PixelCNNpp(pixelcnn_fn, pixelcnn_shape, elem_codec):
-    _, h, w, n_ch = pixelcnn_shape
-    elem_idxs = list(product(range(h), range(w)))
-    def append(message, images):
-        all_params = pixelcnn_fn(images)
-        for y, x in reversed(elem_idxs):
-            elem_params = all_params[:, y, x]
-            elem_append, _ = elem_codec(elem_params)
-            message = elem_append(message, images[:, y, x])
-        return message
-    def pop(message):
-        images = np.zeros(pixelcnn_shape, dtype=np.int32)
-        for y, x in elem_idxs:
-            all_params = pixelcnn_fn(images)
-            elem_params = all_params[:, y, x]
-            _, elem_pop = elem_codec(elem_params)
-            message, elem = elem_pop(message)
-            images[:, y, x] = elem
-        return message, images
-    return append, pop
-
 def AutoRegressive(elem_param_fn, data_shape, iterate_idxs, elem_codec):
     elem_idxs = list(product(*[range(data_shape[x]) for x in iterate_idxs]))
 
@@ -292,7 +290,7 @@ def AutoRegressive(elem_param_fn, data_shape, iterate_idxs, elem_codec):
         idxs = [slice(None) for _ in range(len(data_shape))]
         for k, iterate_idx in enumerate(iterate_idxs):
             idxs[iterate_idx] = partial_idxs[k]
-        return idxs
+        return tuple(idxs)
 
     def append(message, data):
         all_params = elem_param_fn(data)
