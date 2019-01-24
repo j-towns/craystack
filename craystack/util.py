@@ -13,3 +13,7 @@ def view_update(data, view_fun):
                                     item_vs.scalar_mul(item, -np.uint64(1))))
         return vspace(data).add(data, diff)
     return item, update
+
+def softmax(x, axis=-1):
+    max_x = np.max(x, axis=axis, keepdims=True)
+    return np.exp(x - max_x) / np.sum(np.exp(x - max_x), axis=axis, keepdims=True)

@@ -2,6 +2,7 @@ from itertools import product
 import numpy as np
 import craystack.vectorans as vrans
 import craystack.util as util
+from scipy.special import expit as sigmoid
 
 
 def NonUniform(enc_statfun, dec_statfun, precision):
@@ -179,32 +180,34 @@ def Bernoulli(p, prec):
     dec_statfun = _bernoulli_ppf(p, prec)
     return NonUniform(enc_statfun, dec_statfun, prec)
 
-def _ensure_nonzero_freq(probs, precision):
-    probs = np.rint(probs * (1 << precision)).astype('uint64')
+def _cumulative_buckets_from_probs(probs, precision):
+    """Ensure each bucket has at least frequency 1"""
+    probs = np.rint(probs * (1 << precision)).astype('int64')
     probs[probs == 0] = 1
     # TODO(@j-towns): look at simplifying this
     # Normalize the probabilities by decreasing the maxes
     argmax_idxs = np.argmax(probs, axis=-1)[..., np.newaxis]
-    lowered_maxes = (np.take_along_axis(probs, argmax_idxs, axis=-1)
-                     + (1 << precision) - np.sum(probs, axis=-1, keepdims=True))
+    max_value = np.take_along_axis(probs, argmax_idxs, axis=-1)
+    diffs = (1 << precision) - np.sum(probs, axis=-1, keepdims=True)
+    assert not np.any(max_value + diffs <= 0), \
+        "cannot rebalance buckets, consider increasing precision"
+    lowered_maxes = (max_value + diffs)
     np.put_along_axis(probs, argmax_idxs, lowered_maxes, axis=-1)
     return np.concatenate((np.zeros(np.shape(probs)[:-1] + (1,), dtype='uint64'),
-                           np.cumsum(probs, axis=-1)), axis=-1)
+                           np.cumsum(probs, axis=-1)), axis=-1).astype('uint64')
 
-def _categorical_cdf(probs, precision, safe=False):
+def _cdf_from_cumulative_buckets(c_buckets):
     def cdf(s):
-        cumulative_buckets = _ensure_nonzero_freq(probs, precision)
-        ret = np.take_along_axis(cumulative_buckets, s[..., np.newaxis],
+        ret = np.take_along_axis(c_buckets, s[..., np.newaxis],
                                  axis=-1)
         return ret[..., 0]
     return cdf
 
-def _categorical_ppf(probs, precision):
+def _ppf_from_cumulative_buckets(c_buckets):
+    *shape, n = np.shape(c_buckets)
+    cumulative_buckets = np.reshape(c_buckets, (-1, n))
     def ppf(cfs):
-        cumulative_buckets = _ensure_nonzero_freq(probs, precision)
-        *shape, n = np.shape(cumulative_buckets)
-        cumulative_buckets = np.reshape(cumulative_buckets, (-1, n))
-        cfs                = np.ravel(cfs)
+        cfs = np.ravel(cfs)
         ret = np.array(
             [np.searchsorted(bucket, cf, 'right') - 1 for bucket, cf in
              zip(cumulative_buckets, cfs)])
@@ -212,30 +215,51 @@ def _categorical_ppf(probs, precision):
     return ppf
 
 def Categorical(p, prec):
-    """Assume that the last dim of probs contains the probability vectors,
+    """Assume that the last dim of p contains the probability vectors,
     i.e. np.sum(p, axis=-1) == ones"""
-    # Flatten all but last dim of probs
-    enc_statfun = _cdf_to_enc_statfun(_categorical_cdf(p, prec))
-    dec_statfun = _categorical_ppf(p, prec)
+    cumulative_buckets = _cumulative_buckets_from_probs(p, prec)
+    enc_statfun = _cdf_to_enc_statfun(_cdf_from_cumulative_buckets(cumulative_buckets))
+    dec_statfun = _ppf_from_cumulative_buckets(cumulative_buckets)
     return NonUniform(enc_statfun, dec_statfun, prec)
 
-def PixelCNN(pixelcnn_fn, pixelcnn_shape, elem_codec):
-    _, n_ch, h, w = pixelcnn_shape
-    elem_idxs = list(product(range(h), range(w), range(n_ch)))
-    def append(message, images):
-        all_params = pixelcnn_fn(images)
-        for y, x, ch in reversed(elem_idxs):
-            elem_params = all_params[:, ch, y, x]
+def _create_logistic_mixture_buckets(means, log_scales, logit_probs, prec):
+    inv_stdv = np.exp(-log_scales)
+    buckets = np.linspace(-1, 1, 257)  # TODO: change hardcoding
+    buckets = np.broadcast_to(buckets, means.shape + (257,))
+    cdfs = inv_stdv[..., np.newaxis] * (buckets - means[..., np.newaxis])
+    cdfs[..., 0] = -np.inf
+    cdfs[..., -1] = np.inf
+    cdfs = sigmoid(cdfs)
+    prob_cpts = cdfs[..., 1:] - cdfs[..., :-1]
+    mixture_probs = util.softmax(logit_probs, axis=1)
+    probs = np.sum(prob_cpts * mixture_probs[..., np.newaxis], axis=1)
+    return _cumulative_buckets_from_probs(probs, prec)
+
+def LogisticMixture(theta, prec):
+    """theta: means, log_scales, logit_probs"""
+    means, log_scales, logit_probs = np.split(theta, 3, axis=-1)
+    cumulative_buckets = _create_logistic_mixture_buckets(means, log_scales,
+                                                          logit_probs, prec)
+    enc_statfun = _cdf_to_enc_statfun(_cdf_from_cumulative_buckets(cumulative_buckets))
+    dec_statfun = _ppf_from_cumulative_buckets(cumulative_buckets)
+    return NonUniform(enc_statfun, dec_statfun, prec)
+
+def AutoRegressive(elem_param_fn, data_shape, elem_idxs, elem_codec):
+    def append(message, data):
+        all_params = elem_param_fn(data)
+        for idx in reversed(elem_idxs):
+            elem_params = all_params[idx]
             elem_append, _ = elem_codec(elem_params)
-            message = elem_append(message, images[:, ch, y, x])
+            message = elem_append(message, data[idx].astype('uint64'))
         return message
+
     def pop(message):
-        images = np.zeros(pixelcnn_shape, dtype=np.int32)
-        for y, x, ch in elem_idxs:
-            all_params = pixelcnn_fn(images)
-            elem_params = all_params[:, ch, y, x]
+        data = np.zeros(data_shape, dtype=np.uint64)
+        for idx in elem_idxs:
+            all_params = elem_param_fn(data)
+            elem_params = all_params[idx]
             _, elem_pop = elem_codec(elem_params)
             message, elem = elem_pop(message)
-            images[:, ch, y, x] = elem
-        return message, images
+            data[idx] = elem
+        return message, data
     return append, pop
