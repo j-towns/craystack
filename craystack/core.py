@@ -276,12 +276,12 @@ def AutoRegressive(elem_param_fn, data_shape, iterate_idxs, elem_codec):
         all_params = elem_param_fn(data)
         for idxs in reversed(elem_idxs):
             elem_params = all_params[get_idxs(idxs)]
-            elem_append, _ = elem_codec(elem_params)
-            message = elem_append(message, data[get_idxs(idxs)])
+            elem_append, p = elem_codec(elem_params)
+            message = elem_append(message, data[get_idxs(idxs)].astype('uint64'))
         return message
 
     def pop(message):
-        data = np.zeros(data_shape, dtype=np.int32)
+        data = np.zeros(data_shape, dtype=np.uint64)
         for idxs in elem_idxs:
             all_params = elem_param_fn(data)
             elem_params = all_params[get_idxs(idxs)]

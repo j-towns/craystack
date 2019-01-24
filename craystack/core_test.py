@@ -74,11 +74,14 @@ def test_categorical():
 def test_logistic_mixture():
     precision = 12
     batch_size = 2
-    nr_mix = 3
+    nr_mix = 10
     shape = (batch_size, nr_mix)
     means, log_scales, logit_probs = rng.randn(*shape), rng.randn(*shape), rng.randn(*shape)
+    means = means + 100
+    log_scales = log_scales - 10
     theta = np.concatenate((means, log_scales, logit_probs), axis=-1)
-    data = np.array([rng.choice(256) for _ in range(batch_size)])
+    # type is important!
+    data = np.array([rng.choice(256) for _ in range(batch_size)]).astype('uint64')
     check_codec((shape[0], ), cs.LogisticMixture(theta, precision), data)
 
 
