@@ -244,30 +244,22 @@ def LogisticMixture(theta, prec):
     dec_statfun = _ppf_from_cumulative_buckets(cumulative_buckets)
     return NonUniform(enc_statfun, dec_statfun, prec)
 
-def AutoRegressive(elem_param_fn, data_shape, iterate_idxs, elem_codec):
-    elem_idxs = list(product(*[range(data_shape[x]) for x in iterate_idxs]))
-
-    def get_idxs(partial_idxs):
-        idxs = [slice(None) for _ in range(len(data_shape))]
-        for k, iterate_idx in enumerate(iterate_idxs):
-            idxs[iterate_idx] = partial_idxs[k]
-        return tuple(idxs)
-
+def AutoRegressive(elem_param_fn, data_shape, elem_idxs, elem_codec):
     def append(message, data):
         all_params = elem_param_fn(data)
-        for idxs in reversed(elem_idxs):
-            elem_params = all_params[get_idxs(idxs)]
-            elem_append, p = elem_codec(elem_params)
-            message = elem_append(message, data[get_idxs(idxs)].astype('uint64'))
+        for idx in reversed(elem_idxs):
+            elem_params = all_params[idx]
+            elem_append, _ = elem_codec(elem_params)
+            message = elem_append(message, data[idx].astype('uint64'))
         return message
 
     def pop(message):
         data = np.zeros(data_shape, dtype=np.uint64)
-        for idxs in elem_idxs:
+        for idx in elem_idxs:
             all_params = elem_param_fn(data)
-            elem_params = all_params[get_idxs(idxs)]
+            elem_params = all_params[idx]
             _, elem_pop = elem_codec(elem_params)
             message, elem = elem_pop(message)
-            data[get_idxs(idxs)] = elem
+            data[idx] = elem
         return message, data
     return append, pop

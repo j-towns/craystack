@@ -84,7 +84,6 @@ def test_logistic_mixture():
     data = np.array([rng.choice(256) for _ in range(batch_size)]).astype('uint64')
     check_codec((shape[0], ), cs.LogisticMixture(theta, precision), data)
 
-
 def test_autoregressive():
     precision = 8
     batch_size = 3
@@ -94,11 +93,12 @@ def test_autoregressive():
     data = np.reshape(data, (batch_size, data_size))
     fixed_probs = rng.random((batch_size, data_size, choices))
     fixed_probs = fixed_probs / np.sum(fixed_probs, axis=-1, keepdims=True)
+    elem_idxs = [(slice(None), i) for i in range(10)]  # slice for the batch dimension
     elem_codec = lambda p: cs.Categorical(p, precision)
     check_codec((batch_size,),
                 cs.AutoRegressive(lambda x: fixed_probs,
                                   (batch_size, data_size,),
-                                  (1,),
+                                  elem_idxs,
                                   elem_codec),
                 data)
 
