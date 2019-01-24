@@ -195,25 +195,33 @@ def _ensure_nonzero_freq(probs, precision):
     return np.concatenate((np.zeros(np.shape(probs)[:-1] + (1,), dtype='uint64'),
                            np.cumsum(probs, axis=-1)), axis=-1).astype('uint64')
 
-def _categorical_cdf(probs, precision, safe=False):
-    cumulative_buckets = _ensure_nonzero_freq(probs, precision)
+def _cdf_from_cumulative_buckets(c_buckets):
     def cdf(s):
-        ret = np.take_along_axis(cumulative_buckets, s[..., np.newaxis],
+        ret = np.take_along_axis(c_buckets, s[..., np.newaxis],
                                  axis=-1)
         return ret[..., 0]
     return cdf
 
-def _categorical_ppf(probs, precision):
-    cumulative_buckets = _ensure_nonzero_freq(probs, precision)
-    *shape, n = np.shape(cumulative_buckets)
-    cumulative_buckets = np.reshape(cumulative_buckets, (-1, n))
+def _ppf_from_cumulative_buckets(c_buckets):
+    *shape, n = np.shape(c_buckets)
+    cumulative_buckets = np.reshape(c_buckets, (-1, n))
+
     def ppf(cfs):
-        cfs                = np.ravel(cfs)
+        cfs = np.ravel(cfs)
         ret = np.array(
             [np.searchsorted(bucket, cf, 'right') - 1 for bucket, cf in
              zip(cumulative_buckets, cfs)])
         return np.reshape(ret, shape)
+
     return ppf
+
+def _categorical_cdf(probs, precision, safe=False):
+    cumulative_buckets = _ensure_nonzero_freq(probs, precision)
+    return _cdf_from_cumulative_buckets(cumulative_buckets)
+
+def _categorical_ppf(probs, precision):
+    cumulative_buckets = _ensure_nonzero_freq(probs, precision)
+    return _ppf_from_cumulative_buckets(cumulative_buckets)
 
 def Categorical(p, prec):
     """Assume that the last dim of p contains the probability vectors,
@@ -241,52 +249,19 @@ def _logistic_mixture_cdf(theta, prec):
     means, log_scales, logit_probs = np.split(theta, 3, axis=-1)
     cumulative_buckets = _create_logistic_mixture_buckets(means, log_scales,
                                                           logit_probs, prec)
-    def cdf(s):
-        ret = np.take_along_axis(cumulative_buckets, s[..., np.newaxis],
-                                 axis=-1)
-        return ret[..., 0]
-    return cdf
+    return _cdf_from_cumulative_buckets(cumulative_buckets)
 
 def _logistic_mixture_ppf(theta, prec):
     means, log_scales, logit_probs = np.split(theta, 3, axis=-1)
     cumulative_buckets = _create_logistic_mixture_buckets(means, log_scales,
                                                           logit_probs, prec)
-    *shape, n = np.shape(cumulative_buckets)
-    cumulative_buckets = np.reshape(cumulative_buckets, (-1, n))
-    def ppf(cfs):
-        cfs = np.ravel(cfs)
-        ret = np.array(
-            [np.searchsorted(bucket, cf, 'right') - 1 for bucket, cf in
-             zip(cumulative_buckets, cfs)])
-        return np.reshape(ret, shape)
-    return ppf
+    return _ppf_from_cumulative_buckets(cumulative_buckets)
 
 def LogisticMixture(theta, prec):
-    """theta: means, log_scales, coeffs, logit_probs"""
+    """theta: means, log_scales, logit_probs"""
     enc_statfun = _cdf_to_enc_statfun(_logistic_mixture_cdf(theta, prec))
     dec_statfun = _logistic_mixture_ppf(theta, prec)
     return NonUniform(enc_statfun, dec_statfun, prec)
-
-def PixelCNN(pixelcnn_fn, pixelcnn_shape, elem_codec):
-    _, n_ch, h, w = pixelcnn_shape
-    elem_idxs = list(product(range(h), range(w), range(n_ch)))
-    def append(message, images):
-        all_params = pixelcnn_fn(images)
-        for y, x, ch in reversed(elem_idxs):
-            elem_params = all_params[:, ch, y, x]
-            elem_append, _ = elem_codec(elem_params)
-            message = elem_append(message, images[:, ch, y, x])
-        return message
-    def pop(message):
-        images = np.zeros(pixelcnn_shape, dtype=np.int32)
-        for y, x, ch in elem_idxs:
-            all_params = pixelcnn_fn(images)
-            elem_params = all_params[:, ch, y, x]
-            _, elem_pop = elem_codec(elem_params)
-            message, elem = elem_pop(message)
-            images[:, ch, y, x] = elem
-        return message, images
-    return append, pop
 
 def AutoRegressive(elem_param_fn, data_shape, iterate_idxs, elem_codec):
     elem_idxs = list(product(*[range(data_shape[x]) for x in iterate_idxs]))
