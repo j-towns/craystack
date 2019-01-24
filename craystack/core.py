@@ -180,7 +180,8 @@ def Bernoulli(p, prec):
     dec_statfun = _bernoulli_ppf(p, prec)
     return NonUniform(enc_statfun, dec_statfun, prec)
 
-def _ensure_nonzero_freq(probs, precision):
+def _cumulative_buckets_from_probs(probs, precision):
+    """Ensure each bucket has at least frequency 1"""
     probs = np.rint(probs * (1 << precision)).astype('int64')
     probs[probs == 0] = 1
     # TODO(@j-towns): look at simplifying this
@@ -205,30 +206,20 @@ def _cdf_from_cumulative_buckets(c_buckets):
 def _ppf_from_cumulative_buckets(c_buckets):
     *shape, n = np.shape(c_buckets)
     cumulative_buckets = np.reshape(c_buckets, (-1, n))
-
     def ppf(cfs):
         cfs = np.ravel(cfs)
         ret = np.array(
             [np.searchsorted(bucket, cf, 'right') - 1 for bucket, cf in
              zip(cumulative_buckets, cfs)])
         return np.reshape(ret, shape)
-
     return ppf
-
-def _categorical_cdf(probs, precision, safe=False):
-    cumulative_buckets = _ensure_nonzero_freq(probs, precision)
-    return _cdf_from_cumulative_buckets(cumulative_buckets)
-
-def _categorical_ppf(probs, precision):
-    cumulative_buckets = _ensure_nonzero_freq(probs, precision)
-    return _ppf_from_cumulative_buckets(cumulative_buckets)
 
 def Categorical(p, prec):
     """Assume that the last dim of p contains the probability vectors,
     i.e. np.sum(p, axis=-1) == ones"""
-    # Flatten all but last dim of probs
-    enc_statfun = _cdf_to_enc_statfun(_categorical_cdf(p, prec))
-    dec_statfun = _categorical_ppf(p, prec)
+    cumulative_buckets = _cumulative_buckets_from_probs(p, prec)
+    enc_statfun = _cdf_to_enc_statfun(_cdf_from_cumulative_buckets(cumulative_buckets))
+    dec_statfun = _ppf_from_cumulative_buckets(cumulative_buckets)
     return NonUniform(enc_statfun, dec_statfun, prec)
 
 def _create_logistic_mixture_buckets(means, log_scales, logit_probs, prec):
@@ -242,25 +233,15 @@ def _create_logistic_mixture_buckets(means, log_scales, logit_probs, prec):
     prob_cpts = cdfs[..., 1:] - cdfs[..., :-1]
     mixture_probs = util.softmax(logit_probs, axis=1)
     probs = np.sum(prob_cpts * mixture_probs[..., np.newaxis], axis=1)
-    return _ensure_nonzero_freq(probs, prec)
-
-def _logistic_mixture_cdf(theta, prec):
-    """cdf of mixture is mixture of cdf"""
-    means, log_scales, logit_probs = np.split(theta, 3, axis=-1)
-    cumulative_buckets = _create_logistic_mixture_buckets(means, log_scales,
-                                                          logit_probs, prec)
-    return _cdf_from_cumulative_buckets(cumulative_buckets)
-
-def _logistic_mixture_ppf(theta, prec):
-    means, log_scales, logit_probs = np.split(theta, 3, axis=-1)
-    cumulative_buckets = _create_logistic_mixture_buckets(means, log_scales,
-                                                          logit_probs, prec)
-    return _ppf_from_cumulative_buckets(cumulative_buckets)
+    return _cumulative_buckets_from_probs(probs, prec)
 
 def LogisticMixture(theta, prec):
     """theta: means, log_scales, logit_probs"""
-    enc_statfun = _cdf_to_enc_statfun(_logistic_mixture_cdf(theta, prec))
-    dec_statfun = _logistic_mixture_ppf(theta, prec)
+    means, log_scales, logit_probs = np.split(theta, 3, axis=-1)
+    cumulative_buckets = _create_logistic_mixture_buckets(means, log_scales,
+                                                          logit_probs, prec)
+    enc_statfun = _cdf_to_enc_statfun(_cdf_from_cumulative_buckets(cumulative_buckets))
+    dec_statfun = _ppf_from_cumulative_buckets(cumulative_buckets)
     return NonUniform(enc_statfun, dec_statfun, prec)
 
 def AutoRegressive(elem_param_fn, data_shape, iterate_idxs, elem_codec):
