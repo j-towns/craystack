@@ -181,16 +181,19 @@ def Bernoulli(p, prec):
     return NonUniform(enc_statfun, dec_statfun, prec)
 
 def _ensure_nonzero_freq(probs, precision):
-    probs = np.rint(probs * (1 << precision)).astype('uint64')
+    probs = np.rint(probs * (1 << precision)).astype('int64')
     probs[probs == 0] = 1
     # TODO(@j-towns): look at simplifying this
     # Normalize the probabilities by decreasing the maxes
     argmax_idxs = np.argmax(probs, axis=-1)[..., np.newaxis]
-    lowered_maxes = (np.take_along_axis(probs, argmax_idxs, axis=-1)
-                     + (1 << precision) - np.sum(probs, axis=-1, keepdims=True))
+    max_value = np.take_along_axis(probs, argmax_idxs, axis=-1)
+    diffs = (1 << precision) - np.sum(probs, axis=-1, keepdims=True)
+    assert not np.any(max_value + diffs <= 0), \
+        "cannot rebalance buckets, consider increasing precision"
+    lowered_maxes = (max_value + diffs)
     np.put_along_axis(probs, argmax_idxs, lowered_maxes, axis=-1)
     return np.concatenate((np.zeros(np.shape(probs)[:-1] + (1,), dtype='uint64'),
-                           np.cumsum(probs, axis=-1)), axis=-1)
+                           np.cumsum(probs, axis=-1)), axis=-1).astype('uint64')
 
 def _categorical_cdf(probs, precision, safe=False):
     cumulative_buckets = _ensure_nonzero_freq(probs, precision)
@@ -224,7 +227,7 @@ def _create_logistic_mixture_buckets(means, log_scales, logit_probs, prec):
     inv_stdv = np.exp(-log_scales)
     buckets = np.linspace(-1, 1, 257)  # TODO: change hardcoding
     buckets = np.broadcast_to(buckets, means.shape + (257,))
-    cdfs = inv_stdv[..., np.newaxis] *(buckets - means[..., np.newaxis])
+    cdfs = inv_stdv[..., np.newaxis] * (buckets - means[..., np.newaxis])
     cdfs[..., 0] = -np.inf
     cdfs[..., -1] = np.inf
     cdfs = sigmoid(cdfs)
