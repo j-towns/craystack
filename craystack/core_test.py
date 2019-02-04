@@ -113,22 +113,5 @@ def test_autoregressive():
                 data)
 
 
-def test_diaggaussiandynamicbins():
-    prior_precision = 8
-    post_precision = 10
-    batch_size = 3
-    data_size = 10
-    choices = 1 << prior_precision
-    means = rng.randn(batch_size, data_size)
-    stdds = np.exp(rng.randn(batch_size, data_size))
-    data = np.array([rng.choice(choices) for _ in range(batch_size * data_size)])
-    data = np.reshape(data, (batch_size, data_size))
-    check_codec((batch_size, data_size),
-                bb._DiagGaussianLatentDynamicBins(means, stdds,
-                                                  prior_precision,
-                                                  post_precision),
-                data)
-
-
 def assert_message_equal(message1, message2):
     np.testing.assert_equal(message1, message2)
