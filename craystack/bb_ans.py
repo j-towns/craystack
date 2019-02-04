@@ -60,66 +60,59 @@ def VAE(gen_net, rec_net, obs_codec, prior_prec, latent_prec):
     return BBANS(prior, likelihood, posterior)
 
 def TwoLayerVAE(rec_net1, rec_net2,
-                prior1_codec, obs_codec,
+                post1_codec, obs_codec,
                 prior_prec, latent_prec):
     """
     rec_net1 outputs params for q(z1|x)
     rec_net2 outputs params for q(z2|x)
-    prior1_codec is to code z1 by p(z1|z2)
+    post1_codec is to code z1 by q(z1|z2,x)
     obs_codec is to code x by p(x|z1)"""
-    z1_view_prior = lambda head: head[0]
-    z1_view_post = lambda head: head[1]
+    eps1_view_post = lambda head: head[0]
+    eps1_view_prior = lambda head: head[1]
     z2_view = lambda head: head[2]
     x_view = lambda head: head[3]
 
+    prior_eps1_append, prior_eps1_pop = cs.substack(cs.Uniform(prior_prec), eps1_view_prior)
     prior_z2_append, prior_z2_pop = cs.substack(cs.Uniform(prior_prec), z2_view)
 
     def prior_append(message, latents):
-        z1, z2 = latents
-        z1_vals = std_gaussian_centres(prior_prec)[z1]
-        z2_vals = std_gaussian_centres(prior_prec)[z2]
-        prior_z1_append, _ = cs.substack(prior1_codec(z2_vals), z1_view_prior)
-        message = prior_z1_append(message, z1_vals)
+        eps1, z2 = latents
+        message = prior_eps1_append(message, eps1)
         message = prior_z2_append(message, z2)
         return message
 
     def prior_pop(message):
         message, z2 = prior_z2_pop(message)
-        _, prior_z1_pop = cs.substack(prior1_codec(z2), z1_view_prior)
-        message, z1 = prior_z1_pop(message)
-        return message, (z1, z2)
+        message, eps1 = prior_eps1_pop(message)
+        return message, (eps1, z2)
 
-    def likelihood(latents):
-        """p(x|z1)"""
-        z1, _ = latents
-        z1_vals = std_gaussian_centres(prior_prec)[z1]
-        return cs.substack(obs_codec(z1_vals), x_view)
+    def likelihood(latent):
+        eps1, z2 = latent
+        eps1_vals = std_gaussian_centres(prior_prec)[eps1]
+        z2_vals = std_gaussian_centres(prior_prec)[z2]
+        return cs.substack(obs_codec(eps1_vals, z2_vals), x_view)
 
     def posterior(data):
-        """
-        q(z1|x), q(z2|x)
-        We assume the data doesn't need looking up, as bucket indices are
-        the same as the actual data (integers in [0,1,...,n], i.e. pixel
-        intensities)
-        """
         mu1, sig1, h = rec_net1(data)
         mu2, sig2 = rec_net2(h)
 
-        post_z1_append, post_z1_pop = cs.substack(_DiagGaussianLatent(
-            mu1, sig1, prior_prec, latent_prec), z1_view_post)
         post_z2_append, post_z2_pop = cs.substack(_DiagGaussianLatent(
             mu2, sig2, prior_prec, latent_prec), z2_view)
 
         def posterior_append(message, latents):
-            z1, z2 = latents
-            message = post_z1_append(message, z1)
+            eps1, z2 = latents
+            z2_vals = std_gaussian_centres(prior_prec)[z2]
+            post_eps1_append, _ = cs.substack(post1_codec(z2_vals, mu1, sig1), eps1_view_post)
+            message = post_eps1_append(message, eps1)
             message = post_z2_append(message, z2)
             return message
 
         def posterior_pop(message):
             message, z2 = post_z2_pop(message)
-            message, z1 = post_z1_pop(message)
-            return message, (z1, z2)
+            z2_vals = std_gaussian_centres(prior_prec)[z2]
+            _, post_eps1_pop = cs.substack(post1_codec(z2_vals, mu1, sig1), eps1_view_post)
+            message, eps1 = post_eps1_pop(message)
+            return message, (eps1, z2)
 
         return posterior_append, posterior_pop
 

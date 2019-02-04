@@ -3,6 +3,7 @@ import numpy.random as rng
 
 import craystack as cs
 import craystack.vectorans as vrans
+import craystack.bb_ans as bb
 
 
 def check_codec(head_shape, codec, data):
@@ -13,25 +14,29 @@ def check_codec(head_shape, codec, data):
     assert_message_equal(message, message_)
     np.testing.assert_equal(data, data_)
 
+
 def test_uniform():
     precision = 4
     shape = (2, 3, 5)
     data = rng.randint(precision, size=shape, dtype="uint64")
     check_codec(shape, cs.Uniform(precision), data)
 
+
 def test_benford():
     shape = (2, 3, 5)
     data_len = rng.randint(31, 63, shape, dtype="uint64")
     data = ((1 << data_len) | (rng.randint(1 << 63, size=shape, dtype="uint64")
-                               & ((1 << data_len) -1)))
+                               & ((1 << data_len) - 1)))
     check_codec(shape, cs.Benford64, data)
+
 
 def test_benford_inverse():
     shape = (2, 3, 5)
     data_len = rng.randint(31, 63, shape, dtype="uint64")
     data = ((1 << data_len) | (rng.randint(1 << 63, size=shape, dtype="uint64")
-                               & ((1 << data_len) -1)))
+                               & ((1 << data_len) - 1)))
     check_codec(shape, cs.Benford64, data)
+
 
 def test_repeat():
     precision = 4
@@ -39,6 +44,7 @@ def test_repeat():
     shape = (2, 3, 5)
     data = rng.randint(precision, size=(n_data,) + shape, dtype="uint64")
     check_codec(shape, cs.repeat(cs.Uniform(precision), n_data), data)
+
 
 def test_substack():
     n_data = 100
@@ -55,12 +61,14 @@ def test_substack():
     np.testing.assert_equal(message, message_)
     np.testing.assert_equal(data, data_)
 
+
 def test_bernoulli():
     precision = 4
     shape = (2, 3, 5)
     p = rng.random(shape)
     data = np.uint64(rng.random(shape) < p)
     check_codec(shape, cs.Bernoulli(p, precision), data)
+
 
 def test_categorical():
     precision = 4
@@ -70,6 +78,7 @@ def test_categorical():
     data = np.reshape([rng.choice(4, p=p) for p in ps], shape)
     ps = np.reshape(ps, shape + (4,))
     check_codec(shape, cs.Categorical(ps, precision), data)
+
 
 def test_logistic_mixture():
     precision = 12
@@ -82,14 +91,15 @@ def test_logistic_mixture():
     theta = np.concatenate((means, log_scales, logit_probs), axis=-1)
     # type is important!
     data = np.array([rng.choice(256) for _ in range(batch_size)]).astype('uint64')
-    check_codec((shape[0], ), cs.LogisticMixture(theta, precision), data)
+    check_codec((shape[0],), cs.LogisticMixture(theta, precision), data)
+
 
 def test_autoregressive():
     precision = 8
     batch_size = 3
     data_size = 10
     choices = 8
-    data = np.array([rng.choice(choices) for _ in range(batch_size*data_size)])
+    data = np.array([rng.choice(choices) for _ in range(batch_size * data_size)])
     data = np.reshape(data, (batch_size, data_size))
     fixed_probs = rng.random((batch_size, data_size, choices))
     fixed_probs = fixed_probs / np.sum(fixed_probs, axis=-1, keepdims=True)
@@ -101,6 +111,24 @@ def test_autoregressive():
                                   elem_idxs,
                                   elem_codec),
                 data)
+
+
+def test_diaggaussiandynamicbins():
+    prior_precision = 8
+    post_precision = 10
+    batch_size = 3
+    data_size = 10
+    choices = 1 << prior_precision
+    means = rng.randn(batch_size, data_size)
+    stdds = np.exp(rng.randn(batch_size, data_size))
+    data = np.array([rng.choice(choices) for _ in range(batch_size * data_size)])
+    data = np.reshape(data, (batch_size, data_size))
+    check_codec((batch_size, data_size),
+                bb._DiagGaussianLatentDynamicBins(means, stdds,
+                                                  prior_precision,
+                                                  post_precision),
+                data)
+
 
 def assert_message_equal(message1, message2):
     np.testing.assert_equal(message1, message2)
