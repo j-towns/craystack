@@ -244,7 +244,7 @@ def LogisticMixture(theta, prec):
     dec_statfun = _ppf_from_cumulative_buckets(cumulative_buckets)
     return NonUniform(enc_statfun, dec_statfun, prec)
 
-def AutoRegressive(elem_param_fn, data_shape, elem_idxs, elem_codec):
+def AutoRegressive(elem_param_fn, data_shape, params_shape, elem_idxs, elem_codec):
     def append(message, data):
         all_params = elem_param_fn(data)
         for idx in reversed(elem_idxs):
@@ -255,8 +255,9 @@ def AutoRegressive(elem_param_fn, data_shape, elem_idxs, elem_codec):
 
     def pop(message):
         data = np.zeros(data_shape, dtype=np.uint64)
+        all_params = np.zeros(params_shape, dtype=np.float32)
         for idx in elem_idxs:
-            all_params = elem_param_fn(data)
+            all_params = elem_param_fn(data, all_params)
             elem_params = all_params[idx]
             _, elem_pop = elem_codec(elem_params)
             message, elem = elem_pop(message)
