@@ -55,7 +55,7 @@ def VAE(gen_net, rec_net, obs_codec, prior_prec, latent_prec):
 
     def posterior(data):
         post_mean, post_stdd = rec_net(data)
-        return cs.substack(_DiagGaussianLatent(
+        return cs.substack(DiagGaussianLatentStdBins(
             post_mean, post_stdd, prior_prec, latent_prec), z_view)
     return BBANS(prior, likelihood, posterior)
 
@@ -96,7 +96,7 @@ def TwoLayerVAE(rec_net1, rec_net2,
         mu1, sig1, h = rec_net1(data)
         mu2, sig2 = rec_net2(h)
 
-        post_z2_append, post_z2_pop = cs.substack(_DiagGaussianLatent(
+        post_z2_append, post_z2_pop = cs.substack(DiagGaussianLatentStdBins(
             mu2, sig2, prior_prec, latent_prec), z2_view)
 
         def posterior_append(message, latents):
@@ -161,8 +161,22 @@ def _gaussian_latent_ppf(mean, stdd, prior_prec, post_prec):
         return np.uint64(np.digitize(x, std_gaussian_buckets(prior_prec)) - 1)
     return ppf
 
-def _DiagGaussianLatent(mean, stdd, prior_prec, post_prec):
+def DiagGaussianLatentStdBins(mean, stdd, prior_prec, post_prec):
     enc_statfun = cs._cdf_to_enc_statfun(
         _gaussian_latent_cdf(mean, stdd, prior_prec, post_prec))
     dec_statfun = _gaussian_latent_ppf(mean, stdd, prior_prec, post_prec)
     return cs.NonUniform(enc_statfun, dec_statfun, post_prec)
+
+def DiagGaussianLatent(mean, stdd, bin_mean, bin_stdd, coding_prec, bin_prec):
+    """To code Gaussian data according to the bins of a different Gaussian"""
+
+    def cdf(idx):
+        x = norm.ppf(idx/(1 << bin_prec), bin_mean, bin_stdd)  # this gives lb of bin
+        return cs._nearest_int(norm.cdf(x, mean, stdd) * (1 << coding_prec))
+
+    def ppf(cf):
+        x_max = norm.ppf((cf + 0.5) / (1 << coding_prec), mean, stdd)
+        return np.uint64(norm.cdf(x_max, bin_mean, bin_stdd) * (1 << bin_prec))
+
+    enc_statfun = cs._cdf_to_enc_statfun(cdf)
+    return cs.NonUniform(enc_statfun, ppf, coding_prec)

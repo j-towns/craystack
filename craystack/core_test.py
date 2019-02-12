@@ -112,6 +112,26 @@ def test_autoregressive():
                                   elem_codec),
                 data)
 
+def test_gaussian_db():
+    bin_precision = 4
+    coding_precision = 8
+    batch_size = 5
+
+    bin_means = rng.randn()
+    bin_stdds = np.exp(rng.randn()/10)
+
+    # if the gaussian distributions have little overlap then will
+    # get zero freq errors
+    means = bin_means + rng.randn()/10
+    stdds = bin_stdds * np.exp(rng.randn()/10.)
+
+    data = np.array([rng.choice(1 << bin_precision) for _ in range(batch_size)])
+
+    check_codec((batch_size,),
+                bb.DiagGaussianLatent(means, stdds, bin_means, bin_stdds,
+                                         coding_precision, bin_precision),
+                data)
+
 
 def assert_message_equal(message1, message2):
     np.testing.assert_equal(message1, message2)
