@@ -113,8 +113,8 @@ def test_autoregressive():
                 data)
 
 def test_gaussian_db():
-    bin_precision = 4
-    coding_precision = 8
+    bin_precision = 8
+    coding_precision = 12
     batch_size = 5
 
     bin_means = rng.randn()
@@ -129,7 +129,7 @@ def test_gaussian_db():
 
     check_codec((batch_size,),
                 bb.DiagGaussianLatent(means, stdds, bin_means, bin_stdds,
-                                         coding_precision, bin_precision),
+                                      coding_precision, bin_precision),
                 data)
 
 

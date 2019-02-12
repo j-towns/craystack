@@ -61,36 +61,43 @@ def VAE(gen_net, rec_net, obs_codec, prior_prec, latent_prec):
 
 def TwoLayerVAE(rec_net1, rec_net2,
                 post1_codec, obs_codec,
-                prior_prec, latent_prec):
+                prior_prec, latent_prec,
+                get_theta):
     """
     rec_net1 outputs params for q(z1|x)
     rec_net2 outputs params for q(z2|x)
     post1_codec is to code z1 by q(z1|z2,x)
     obs_codec is to code x by p(x|z1)"""
-    eps1_view_post = lambda head: head[0]
-    eps1_view_prior = lambda head: head[1]
+    z1_view_post = lambda head: head[0]
+    z1_view_prior = lambda head: head[1]
     z2_view = lambda head: head[2]
     x_view = lambda head: head[3]
 
-    prior_eps1_append, prior_eps1_pop = cs.substack(cs.Uniform(prior_prec), eps1_view_prior)
+    prior_z1_append, prior_z1_pop = cs.substack(cs.Uniform(prior_prec), z1_view_prior)
     prior_z2_append, prior_z2_pop = cs.substack(cs.Uniform(prior_prec), z2_view)
 
-    def prior_append(message, latents):
-        eps1, z2 = latents
-        message = prior_eps1_append(message, eps1)
+    def prior_append(message, latent):
+        (z1, z2), theta1 = latent
+        message = prior_z1_append(message, z1)
         message = prior_z2_append(message, z2)
         return message
 
     def prior_pop(message):
         message, z2 = prior_z2_pop(message)
-        message, eps1 = prior_eps1_pop(message)
-        return message, (eps1, z2)
+        message, z1 = prior_z1_pop(message)
+        # compute theta1
+        eps1_vals = std_gaussian_centres(prior_prec)[z1]
+        z2_vals = std_gaussian_centres(prior_prec)[z2]
+        theta1 = get_theta(eps1_vals, z2_vals)
+        return message, ((z1, z2), theta1)
 
     def likelihood(latent):
-        eps1, z2 = latent
-        eps1_vals = std_gaussian_centres(prior_prec)[eps1]
-        z2_vals = std_gaussian_centres(prior_prec)[z2]
-        return cs.substack(obs_codec(eps1_vals, z2_vals), x_view)
+        (z1, z2), theta1 = latent
+        # get z1_vals from the latent
+        _, _, mu1_prior, sig1_prior = np.moveaxis(theta1, -1, 0)
+        eps1_vals = std_gaussian_centres(prior_prec)[z1]
+        z1_vals = mu1_prior + sig1_prior * eps1_vals
+        return cs.substack(obs_codec(z1_vals), x_view)
 
     def posterior(data):
         mu1, sig1, h = rec_net1(data)
@@ -100,19 +107,23 @@ def TwoLayerVAE(rec_net1, rec_net2,
             mu2, sig2, prior_prec, latent_prec), z2_view)
 
         def posterior_append(message, latents):
-            eps1, z2 = latents
-            z2_vals = std_gaussian_centres(prior_prec)[z2]
-            post_eps1_append, _ = cs.substack(post1_codec(z2_vals, mu1, sig1), eps1_view_post)
-            message = post_eps1_append(message, eps1)
+            (z1, z2), theta1 = latents
+            _, _, mu1_prior, sig1_prior = np.moveaxis(theta1, -1, 0)
+            post_z1_append, _ = cs.substack(DiagGaussianLatent(mu1, sig1,
+                                                               mu1_prior, sig1_prior,
+                                                               latent_prec, prior_prec),
+                                            z1_view_post)
+            message = post_z1_append(message, z1)
             message = post_z2_append(message, z2)
             return message
 
         def posterior_pop(message):
             message, z2 = post_z2_pop(message)
             z2_vals = std_gaussian_centres(prior_prec)[z2]
-            _, post_eps1_pop = cs.substack(post1_codec(z2_vals, mu1, sig1), eps1_view_post)
-            message, eps1 = post_eps1_pop(message)
-            return message, (eps1, z2)
+            # need to return theta1 from the z1 pop
+            _, post_z1_pop = cs.substack(post1_codec(z2_vals, mu1, sig1), z1_view_post)
+            message, (z1, theta1) = post_z1_pop(message)
+            return message, ((z1, z2), theta1)
 
         return posterior_append, posterior_pop
 
@@ -171,12 +182,15 @@ def DiagGaussianLatent(mean, stdd, bin_mean, bin_stdd, coding_prec, bin_prec):
     """To code Gaussian data according to the bins of a different Gaussian"""
 
     def cdf(idx):
-        x = norm.ppf(idx/(1 << bin_prec), bin_mean, bin_stdd)  # this gives lb of bin
+        x = norm.ppf(idx / (1 << bin_prec), bin_mean, bin_stdd)  # this gives lb of bin
         return cs._nearest_int(norm.cdf(x, mean, stdd) * (1 << coding_prec))
 
     def ppf(cf):
         x_max = norm.ppf((cf + 0.5) / (1 << coding_prec), mean, stdd)
-        return np.uint64(norm.cdf(x_max, bin_mean, bin_stdd) * (1 << bin_prec))
+        # if our gaussians have little overlap, then the cdf could be exactly 1
+        # therefore cut off at (1<<bin_prec)-1 to make sure we return a valid bin
+        return np.uint64(np.minimum((1 << bin_prec) - 1,
+                                    norm.cdf(x_max, bin_mean, bin_stdd) * (1 << bin_prec)))
 
     enc_statfun = cs._cdf_to_enc_statfun(cdf)
     return cs.NonUniform(enc_statfun, ppf, coding_prec)

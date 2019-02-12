@@ -55,6 +55,7 @@ def NonUniform(enc_statfun, dec_statfun, precision):
         cf, pop_fun = vrans.pop(message, precision)
         symbol = dec_statfun(cf)
         start, freq = enc_statfun(symbol)
+        symbol = dec_statfun(cf)
         assert np.all(start <= cf) and np.all(cf < start + freq)
         return pop_fun(start, freq), symbol
     return append, pop
@@ -262,5 +263,5 @@ def AutoRegressive(elem_param_fn, data_shape, params_shape, elem_idxs, elem_code
             _, elem_pop = elem_codec(elem_params)
             message, elem = elem_pop(message)
             data[idx] = elem
-        return message, data
+        return message, (data, all_params)
     return append, pop
