@@ -116,7 +116,7 @@ def repeat(codec, n):
     append_, pop_ = codec
     def append(message, symbols):
         assert np.shape(symbols)[0] == n
-        for symbol in symbols[::-1]:
+        for symbol in reversed(symbols):
             message = append_(message, symbol)
         return message
 
@@ -140,6 +140,30 @@ def substack(codec, view_fun):
         subhead, update = util.view_update(head, view_fun)
         (subhead, tail), data = pop_((subhead, tail))
         return (update(subhead), tail), data
+    return append, pop
+
+def parallel(codecs, view_funs):
+    """
+    Run a number of independent codecs on different substacks. This could be
+    executed in parallel, but when running in the Python interpreter will run
+    in series.
+
+    Assumes data is a list, arranged the same way as codecs and view_funs.
+    """
+    codecs = [substack(codec, view_fun)
+              for codec, view_fun in zip(codecs, view_funs)]
+    def append(message, symbols):
+        assert len(symbols) == len(codecs)
+        for (append, _), symbol in reversed(list(zip(codecs, symbols))):
+            message = append(message, symbol)
+        return message
+    def pop(message):
+        symbols = []
+        for _, pop in codecs:
+            message, symbol = pop(message)
+            symbols.append(symbol)
+        assert len(symbols) == len(codecs)
+        return message, symbols
     return append, pop
 
 def shape(message):

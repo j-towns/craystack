@@ -61,6 +61,20 @@ def test_substack():
     np.testing.assert_equal(message, message_)
     np.testing.assert_equal(data, data_)
 
+def test_parallel():
+    precs = [1, 2, 4, 8, 16]
+    szs = [2, 3, 4, 5, 6]
+    codecs = [cs.Uniform(p) for p in precs]
+    view_fun = lambda slc: lambda head: head[slc]
+    view_funs = []
+    start = 0
+    for s in szs:
+        view_funs.append(view_fun(slice(start, start + s)))
+        start += s
+    data = [rng.randint(1 << p, size=size, dtype='uint64')
+            for p, size in zip(precs, szs)]
+    check_codec(sum(szs), cs.parallel(codecs, view_funs), data)
+
 
 def test_bernoulli():
     precision = 4
