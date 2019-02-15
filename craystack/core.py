@@ -55,7 +55,6 @@ def NonUniform(enc_statfun, dec_statfun, precision):
         cf, pop_fun = vrans.pop(message, precision)
         symbol = dec_statfun(cf)
         start, freq = enc_statfun(symbol)
-        symbol = dec_statfun(cf)
         assert np.all(start <= cf) and np.all(cf < start + freq)
         return pop_fun(start, freq), symbol
     return append, pop
@@ -270,11 +269,12 @@ def LogisticMixture(theta, prec):
     return NonUniform(enc_statfun, dec_statfun, prec)
 
 def AutoRegressive(elem_param_fn, data_shape, params_shape, elem_idxs, elem_codec):
-    def append(message, data):
-        all_params = elem_param_fn(data)
+    def append(message, data, all_params=None):
+        if not all_params:
+            all_params = elem_param_fn(data)
         for idx in reversed(elem_idxs):
             elem_params = all_params[idx]
-            elem_append, _ = elem_codec(elem_params)
+            elem_append, _ = elem_codec(elem_params, idx)
             message = elem_append(message, data[idx].astype('uint64'))
         return message
 
@@ -284,7 +284,7 @@ def AutoRegressive(elem_param_fn, data_shape, params_shape, elem_idxs, elem_code
         for idx in elem_idxs:
             all_params = elem_param_fn(data, all_params)
             elem_params = all_params[idx]
-            _, elem_pop = elem_codec(elem_params)
+            _, elem_pop = elem_codec(elem_params, idx)
             message, elem = elem_pop(message)
             data[idx] = elem
         return message, (data, all_params)

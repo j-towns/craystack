@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.stats import norm
 import craystack.core as cs
+import craystack.vectorans as vrans
 
 
 def BBANS(prior, likelihood, posterior):
@@ -68,12 +69,11 @@ def TwoLayerVAE(rec_net1, rec_net2,
     rec_net2 outputs params for q(z2|x)
     post1_codec is to code z1 by q(z1|z2,x)
     obs_codec is to code x by p(x|z1)"""
-    z1_view_post = lambda head: head[0]
-    z1_view_prior = lambda head: head[1]
-    z2_view = lambda head: head[2]
-    x_view = lambda head: head[3]
+    z1_view = lambda head: head[0]
+    z2_view = lambda head: head[1]
+    x_view = lambda head: head[2]
 
-    prior_z1_append, prior_z1_pop = cs.substack(cs.Uniform(prior_prec), z1_view_prior)
+    prior_z1_append, prior_z1_pop = cs.substack(cs.Uniform(prior_prec), z1_view)
     prior_z2_append, prior_z2_pop = cs.substack(cs.Uniform(prior_prec), z2_view)
 
     def prior_append(message, latent):
@@ -97,7 +97,11 @@ def TwoLayerVAE(rec_net1, rec_net2,
         _, _, mu1_prior, sig1_prior = np.moveaxis(theta1, -1, 0)
         eps1_vals = std_gaussian_centres(prior_prec)[z1]
         z1_vals = mu1_prior + sig1_prior * eps1_vals
-        return cs.substack(obs_codec(z1_vals), x_view)
+        append, pop = cs.substack(obs_codec(z1_vals), x_view)
+        def pop_(msg):
+            msg, (data, _) = pop(msg)
+            return msg, data
+        return append, pop_
 
     def posterior(data):
         mu1, sig1, h = rec_net1(data)
@@ -112,7 +116,7 @@ def TwoLayerVAE(rec_net1, rec_net2,
             post_z1_append, _ = cs.substack(DiagGaussianLatent(mu1, sig1,
                                                                mu1_prior, sig1_prior,
                                                                latent_prec, prior_prec),
-                                            z1_view_post)
+                                            z1_view)
             message = post_z1_append(message, z1)
             message = post_z2_append(message, z2)
             return message
@@ -121,7 +125,7 @@ def TwoLayerVAE(rec_net1, rec_net2,
             message, z2 = post_z2_pop(message)
             z2_vals = std_gaussian_centres(prior_prec)[z2]
             # need to return theta1 from the z1 pop
-            _, post_z1_pop = cs.substack(post1_codec(z2_vals, mu1, sig1), z1_view_post)
+            _, post_z1_pop = cs.substack(post1_codec(z2_vals, mu1, sig1), z1_view)
             message, (z1, theta1) = post_z1_pop(message)
             return message, ((z1, z2), theta1)
 
