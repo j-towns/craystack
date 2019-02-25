@@ -133,6 +133,96 @@ def TwoLayerVAE(rec_net1, rec_net2,
 
     return BBANS((prior_append, prior_pop), likelihood, posterior)
 
+
+def ResNetVAE(up_pass, rec_nets, gen_nets, obs_codec,
+              prior_prec, latent_prec, num_latents):
+    """
+    Codec for a ResNetVAE.
+    Assume that the posterior is bidirectional -
+    i.e. has a deterministic upper pass but top down sampling.
+    Further assume that all latent conditionals are factorised Gaussians,
+    both in the generative network p(z_n|z_{n-1})
+    and in the inference network q(z_n|x, z_{n-1})
+    """
+    x_view = lambda head: head[-1]
+
+    def latent_view(n):
+        # assume that the latent views are ordered top-down
+        return lambda head: head[n]
+
+    prior_codecs = [cs.substack(cs.Uniform(prior_prec), latent_view(i)) for i in range(num_latents)]
+
+    def prior_append(message, latents):
+        # append bottom-up
+        for i in reversed(range(num_latents)):
+            append, _ = prior_codecs[i]
+            latent, _ = latents[i]
+            message = append(message, latent)
+        return message
+
+    def prior_pop(message):
+        # pop top-down
+        latents = []
+        previous_latent_val = None
+        for codec, gen_net in zip(prior_codecs, gen_nets):
+            _, pop = codec
+            message, latent = pop(message)
+            prior_mean, prior_stdd = gen_net(previous_latent_val) if previous_latent_val else gen_net()
+            latents.append((latent, (prior_mean, prior_stdd)))
+            previous_latent_val = prior_mean + std_gaussian_centres(prior_prec)[latent] * prior_stdd
+        return message, latents
+
+    def posterior(data):
+        # run deterministic upper-pass
+        context = up_pass(data)  # TODO: use this in relevant place
+
+        def posterior_append(message, latents):
+            # append bottom-up
+            for i in reversed(range(num_latents)):
+                latent, (prior_mean, prior_stdd) = latents[i]
+                rec_net = rec_nets[i]
+                previous_latent_val = None
+                if i > 0:
+                    previous_latent, _ = latents[i-1]
+                    previous_latent_val = prior_mean + \
+                                          std_gaussian_centres(prior_prec)[previous_latent] * prior_stdd
+                post_mean, post_stdd = rec_net(previous_latent_val) if previous_latent_val else rec_net()
+                append, _ = cs.substack(DiagGaussianLatent(post_mean, post_stdd,
+                                                           prior_mean, prior_stdd,
+                                                           latent_prec, prior_prec),
+                                        latent_view(i))
+                message = append(message, latent)
+            return message
+
+        def posterior_pop(message):
+            # pop top-down
+            latents = []
+            previous_latent_val = None
+            for i in range(num_latents):
+                rec_net = rec_nets[i]
+                gen_net = gen_nets[i]
+                post_mean, post_stdd = rec_net(previous_latent_val) if previous_latent_val else rec_net()
+                prior_mean, prior_stdd = gen_net(previous_latent_val) if previous_latent_val else gen_net()
+                _, pop = cs.substack(DiagGaussianLatent(post_mean, post_stdd,
+                                                        prior_mean, prior_stdd,
+                                                        latent_prec, prior_prec),
+                                     latent_view(i))
+                message, latent = pop(message)
+                previous_latent_val = prior_mean + std_gaussian_centres(prior_prec)[latent] * prior_stdd
+                latents.append((latent, (prior_mean, prior_stdd)))
+            return message, latents
+
+        return posterior_append, posterior_pop
+
+    def likelihood(latents):
+        # get the z1 vals to condition on
+        z1_idxs, (prior_mean, prior_stdd) = latents[-1]
+        z1_vals = prior_mean + std_gaussian_centres(prior_prec) * prior_stdd
+        return cs.substack(obs_codec(z1_vals), x_view)
+
+    return BBANS((prior_append, prior_pop), likelihood, posterior)
+
+
 std_gaussian_bucket_cache = {}  # Stores bucket endpoints
 std_gaussian_centres_cache = {}  # Stores bucket centres
 
