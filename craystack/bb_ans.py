@@ -60,7 +60,8 @@ def VAE(gen_net, rec_net, obs_codec, prior_prec, latent_prec):
             post_mean, post_stdd, prior_prec, latent_prec), z_view)
     return BBANS(prior, likelihood, posterior)
 
-def TwoLayerVAE(rec_net1, rec_net2,
+def TwoLayerVAE(gen_net2_partial,
+                rec_net1, rec_net2,
                 post1_codec, obs_codec,
                 prior_prec, latent_prec,
                 get_theta):
@@ -97,7 +98,7 @@ def TwoLayerVAE(rec_net1, rec_net2,
         _, _, mu1_prior, sig1_prior = np.moveaxis(theta1, -1, 0)
         eps1_vals = std_gaussian_centres(prior_prec)[z1]
         z1_vals = mu1_prior + sig1_prior * eps1_vals
-        append, pop = cs.substack(obs_codec(z1_vals), x_view)
+        append, pop = cs.substack(obs_codec(gen_net2_partial(z1_vals)), x_view)
         def pop_(msg):
             msg, (data, _) = pop(msg)
             return msg, data
@@ -134,7 +135,7 @@ def TwoLayerVAE(rec_net1, rec_net2,
     return BBANS((prior_append, prior_pop), likelihood, posterior)
 
 
-def ResNetVAE(up_pass, rec_nets, gen_nets, obs_codec,
+def ResNetVAE(up_pass, rec_net_top, rec_nets, gen_net_top, gen_nets, obs_codec,
               prior_prec, latent_prec, num_latents):
     """
     Codec for a ResNetVAE.
@@ -143,82 +144,98 @@ def ResNetVAE(up_pass, rec_nets, gen_nets, obs_codec,
     Further assume that all latent conditionals are factorised Gaussians,
     both in the generative network p(z_n|z_{n-1})
     and in the inference network q(z_n|x, z_{n-1})
+
+    Assume that everything is ordered bottom up
     """
-    x_view = lambda head: head[-1]
+    z_view = lambda head: head[0]
+    x_view = lambda head: head[1]
 
-    def latent_view(n):
-        # assume that the latent views are ordered top-down
-        return lambda head: head[n]
-
-    prior_codecs = [cs.substack(cs.Uniform(prior_prec), latent_view(i)) for i in range(num_latents)]
+    prior_codec = cs.substack(cs.Uniform(prior_prec), z_view)
 
     def prior_append(message, latents):
         # append bottom-up
-        for i in reversed(range(num_latents)):
-            append, _ = prior_codecs[i]
-            latent, _ = latents[i]
+        append, _ = prior_codec
+        latents, _ = latents
+        for latent in latents:
+            latent, _ = latent
             message = append(message, latent)
         return message
 
     def prior_pop(message):
         # pop top-down
-        latents = []
-        previous_latent_val = None
-        for codec, gen_net in zip(prior_codecs, gen_nets):
-            _, pop = codec
-            message, latent = pop(message)
-            prior_mean, prior_stdd = gen_net(previous_latent_val) if previous_latent_val else gen_net()
-            latents.append((latent, (prior_mean, prior_stdd)))
+        (prior_mean, prior_stdd), h_gen = gen_net_top()
+        _, pop = prior_codec
+        message, latent = pop(message)
+        latents = [(latent, (prior_mean, prior_stdd))]
+        for gen_net in reversed(gen_nets):
             previous_latent_val = prior_mean + std_gaussian_centres(prior_prec)[latent] * prior_stdd
-        return message, latents
+            message, latent = pop(message)
+            (prior_mean, prior_stdd), h_gen = gen_net(h_gen, previous_latent_val)
+            latents.append((latent, (prior_mean, prior_stdd)))
+        return message, (latents[::-1], h_gen)
 
     def posterior(data):
         # run deterministic upper-pass
-        context = up_pass(data)  # TODO: use this in relevant place
+        contexts = up_pass()
 
         def posterior_append(message, latents):
-            # append bottom-up
-            for i in reversed(range(num_latents)):
-                latent, (prior_mean, prior_stdd) = latents[i]
-                rec_net = rec_nets[i]
-                previous_latent_val = None
-                if i > 0:
-                    previous_latent, _ = latents[i-1]
-                    previous_latent_val = prior_mean + \
-                                          std_gaussian_centres(prior_prec)[previous_latent] * prior_stdd
-                post_mean, post_stdd = rec_net(previous_latent_val) if previous_latent_val else rec_net()
+            # first run the model top-down to get the params and latent vals
+            latents, _ = latents
+
+            (post_mean, post_stdd), h_rec = rec_net_top(contexts[-1])
+            post_params = [(post_mean, post_stdd)]
+
+            for rec_net, latent, context in reversed(list(zip(rec_nets, latents[1:], contexts[:-1]))):
+                previous_latent, (prior_mean, prior_stdd) = latent
+                previous_latent_val = prior_mean + std_gaussian_centres(prior_prec)[previous_latent] * prior_stdd
+
+                (post_mean, post_stdd), h_rec = rec_net(h_rec, previous_latent_val, context)
+                post_params.append((post_mean, post_stdd))
+
+            # now append bottom up
+            for latent, post_param in zip(latents, reversed(post_params)):
+                latent, (prior_mean, prior_stdd) = latent
+                post_mean, post_stdd = post_param
                 append, _ = cs.substack(DiagGaussianLatent(post_mean, post_stdd,
                                                            prior_mean, prior_stdd,
                                                            latent_prec, prior_prec),
-                                        latent_view(i))
+                                        z_view)
                 message = append(message, latent)
             return message
 
         def posterior_pop(message):
             # pop top-down
             latents = []
-            previous_latent_val = None
-            for i in range(num_latents):
-                rec_net = rec_nets[i]
-                gen_net = gen_nets[i]
-                post_mean, post_stdd = rec_net(previous_latent_val) if previous_latent_val else rec_net()
-                prior_mean, prior_stdd = gen_net(previous_latent_val) if previous_latent_val else gen_net()
+
+            (post_mean, post_stdd), h_rec = rec_net_top(contexts[-1])
+            (prior_mean, prior_stdd), h_gen = gen_net_top()
+            _, pop = cs.substack(DiagGaussianLatent(post_mean, post_stdd,
+                                                    prior_mean, prior_stdd,
+                                                    latent_prec, prior_prec),
+                                 z_view)
+            message, latent = pop(message)
+            latents = [(latent, (prior_mean, prior_stdd))]
+            for rec_net, gen_net, context in reversed(list(zip(rec_nets, gen_nets, contexts[:-1]))):
+                previous_latent_val = prior_mean + std_gaussian_centres(prior_prec)[latents[-1][0]] * prior_stdd
+
+                (post_mean, post_stdd), h_rec = rec_net(h_rec, previous_latent_val, context)
+                (prior_mean, prior_stdd), h_gen = gen_net(h_gen, previous_latent_val)
                 _, pop = cs.substack(DiagGaussianLatent(post_mean, post_stdd,
                                                         prior_mean, prior_stdd,
                                                         latent_prec, prior_prec),
-                                     latent_view(i))
+                                     z_view)
                 message, latent = pop(message)
-                previous_latent_val = prior_mean + std_gaussian_centres(prior_prec)[latent] * prior_stdd
                 latents.append((latent, (prior_mean, prior_stdd)))
-            return message, latents
+            return message, (latents[::-1], h_gen)  # TODO: which h do we need for the observation?
 
         return posterior_append, posterior_pop
 
     def likelihood(latents):
         # get the z1 vals to condition on
-        z1_idxs, (prior_mean, prior_stdd) = latents[-1]
-        z1_vals = prior_mean + std_gaussian_centres(prior_prec) * prior_stdd
-        return cs.substack(obs_codec(z1_vals), x_view)
+        latents, h = latents
+        z1_idxs, (prior_mean, prior_stdd) = latents[0]
+        z1_vals = prior_mean + std_gaussian_centres(prior_prec)[z1_idxs] * prior_stdd
+        return cs.substack(obs_codec(h, z1_vals), x_view)
 
     return BBANS((prior_append, prior_pop), likelihood, posterior)
 

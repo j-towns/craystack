@@ -246,6 +246,23 @@ def Categorical(p, prec):
     dec_statfun = _ppf_from_cumulative_buckets(cumulative_buckets)
     return NonUniform(enc_statfun, dec_statfun, prec)
 
+def _create_logistic_buckets(means, log_scale, prec):
+    buckets = np.linspace(0, 1, 257)
+    buckets = np.broadcast_to(buckets, means.shape + (257,))
+    inv_stdv = np.exp(-log_scale)
+    cdfs = inv_stdv * (buckets - means[..., np.newaxis])
+    cdfs[..., 0] = -np.inf
+    cdfs[..., -1] = np.inf
+    cdfs = sigmoid(cdfs)
+    probs = cdfs[..., 1:] - cdfs[..., :-1]
+    return _cumulative_buckets_from_probs(probs, prec)
+
+def Logistic(mean, log_scale, prec):
+    cumulative_buckets = _create_logistic_buckets(mean, log_scale, prec)
+    enc_statfun = _cdf_to_enc_statfun(_cdf_from_cumulative_buckets(cumulative_buckets))
+    dec_statfun = _ppf_from_cumulative_buckets(cumulative_buckets)
+    return NonUniform(enc_statfun, dec_statfun, prec)
+
 def _create_logistic_mixture_buckets(means, log_scales, logit_probs, prec):
     inv_stdv = np.exp(-log_scales)
     buckets = np.linspace(-1, 1, 257)  # TODO: change hardcoding
