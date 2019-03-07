@@ -136,7 +136,7 @@ def TwoLayerVAE(gen_net2_partial,
 
 
 def ResNetVAE(up_pass, rec_net_top, rec_nets, gen_net_top, gen_nets, obs_codec,
-              prior_prec, latent_prec, num_latents):
+              prior_prec, latent_prec):
     """
     Codec for a ResNetVAE.
     Assume that the posterior is bidirectional -
@@ -169,8 +169,8 @@ def ResNetVAE(up_pass, rec_net_top, rec_nets, gen_net_top, gen_nets, obs_codec,
         latents = [(latent, (prior_mean, prior_stdd))]
         for gen_net in reversed(gen_nets):
             previous_latent_val = prior_mean + std_gaussian_centres(prior_prec)[latent] * prior_stdd
-            message, latent = pop(message)
             (prior_mean, prior_stdd), h_gen = gen_net(h_gen, previous_latent_val)
+            message, latent = pop(message)
             latents.append((latent, (prior_mean, prior_stdd)))
         return message, (latents[::-1], h_gen)
 
@@ -187,7 +187,8 @@ def ResNetVAE(up_pass, rec_net_top, rec_nets, gen_net_top, gen_nets, obs_codec,
 
             for rec_net, latent, context in reversed(list(zip(rec_nets, latents[1:], contexts[:-1]))):
                 previous_latent, (prior_mean, prior_stdd) = latent
-                previous_latent_val = prior_mean + std_gaussian_centres(prior_prec)[previous_latent] * prior_stdd
+                previous_latent_val = prior_mean + \
+                                      std_gaussian_centres(prior_prec)[previous_latent] * prior_stdd
 
                 (post_mean, post_stdd), h_rec = rec_net(h_rec, previous_latent_val, context)
                 post_params.append((post_mean, post_stdd))
@@ -216,7 +217,8 @@ def ResNetVAE(up_pass, rec_net_top, rec_nets, gen_net_top, gen_nets, obs_codec,
             message, latent = pop(message)
             latents = [(latent, (prior_mean, prior_stdd))]
             for rec_net, gen_net, context in reversed(list(zip(rec_nets, gen_nets, contexts[:-1]))):
-                previous_latent_val = prior_mean + std_gaussian_centres(prior_prec)[latents[-1][0]] * prior_stdd
+                previous_latent_val = prior_mean + \
+                                      std_gaussian_centres(prior_prec)[latents[-1][0]] * prior_stdd
 
                 (post_mean, post_stdd), h_rec = rec_net(h_rec, previous_latent_val, context)
                 (prior_mean, prior_stdd), h_gen = gen_net(h_gen, previous_latent_val)
@@ -237,7 +239,7 @@ def ResNetVAE(up_pass, rec_net_top, rec_nets, gen_net_top, gen_nets, obs_codec,
         z1_vals = prior_mean + std_gaussian_centres(prior_prec)[z1_idxs] * prior_stdd
         return cs.substack(obs_codec(h, z1_vals), x_view)
 
-    return BBANS((prior_append, prior_pop), likelihood, posterior)
+    return (prior_append, prior_pop), likelihood, posterior
 
 
 std_gaussian_bucket_cache = {}  # Stores bucket endpoints
