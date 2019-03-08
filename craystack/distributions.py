@@ -228,11 +228,11 @@ def _gaussian_latent_ppf(mean, stdd, prior_prec, post_prec):
         return np.uint64(np.digitize(x, std_gaussian_buckets(prior_prec)) - 1)
     return ppf
 
-def DiagGaussianLatentStdBins(mean, stdd, prior_prec, post_prec):
+def DiagGaussianLatentStdBins(mean, stdd, coding_prec, bin_prec):
     enc_statfun = _cdf_to_enc_statfun(
-        _gaussian_latent_cdf(mean, stdd, prior_prec, post_prec))
-    dec_statfun = _gaussian_latent_ppf(mean, stdd, prior_prec, post_prec)
-    return NonUniform(enc_statfun, dec_statfun, post_prec)
+        _gaussian_latent_cdf(mean, stdd, bin_prec, coding_prec))
+    dec_statfun = _gaussian_latent_ppf(mean, stdd, bin_prec, coding_prec)
+    return NonUniform(enc_statfun, dec_statfun, coding_prec)
 
 def DiagGaussianLatent(mean, stdd, bin_mean, bin_stdd, coding_prec, bin_prec):
     """To code Gaussian data according to the bins of a different Gaussian"""

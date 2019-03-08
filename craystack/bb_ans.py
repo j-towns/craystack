@@ -57,7 +57,7 @@ def VAE(gen_net, rec_net, obs_codec, prior_prec, latent_prec):
     def posterior(data):
         post_mean, post_stdd = rec_net(data)
         return cs.substack(DiagGaussianLatentStdBins(
-            post_mean, post_stdd, prior_prec, latent_prec), z_view)
+            post_mean, post_stdd, latent_prec, prior_prec), z_view)
     return BBANS(prior, likelihood, posterior)
 
 def TwoLayerVAE(gen_net2_partial,
@@ -109,7 +109,7 @@ def TwoLayerVAE(gen_net2_partial,
         mu2, sig2 = rec_net2(h)
 
         post_z2_append, post_z2_pop = cs.substack(DiagGaussianLatentStdBins(
-            mu2, sig2, prior_prec, latent_prec), z2_view)
+            mu2, sig2, latent_prec, prior_prec), z2_view)
 
         def posterior_append(message, latents):
             (z1, z2), theta1 = latents
