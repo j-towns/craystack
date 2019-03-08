@@ -1,7 +1,7 @@
 import numpy as np
-from scipy.stats import norm
 import craystack.core as cs
-import craystack.vectorans as vrans
+from craystack.distributions import Uniform, DiagGaussianLatent, \
+    std_gaussian_centres, DiagGaussianLatentStdBins
 
 
 def BBANS(prior, likelihood, posterior):
@@ -48,7 +48,7 @@ def VAE(gen_net, rec_net, obs_codec, prior_prec, latent_prec):
     z_view = lambda head: head[0]
     x_view = lambda head: head[1]
 
-    prior = cs.substack(cs.Uniform(prior_prec), z_view)
+    prior = cs.substack(Uniform(prior_prec), z_view)
 
     def likelihood(latent_idxs):
         z = std_gaussian_centres(prior_prec)[latent_idxs]
@@ -74,8 +74,8 @@ def TwoLayerVAE(gen_net2_partial,
     z2_view = lambda head: head[1]
     x_view = lambda head: head[2]
 
-    prior_z1_append, prior_z1_pop = cs.substack(cs.Uniform(prior_prec), z1_view)
-    prior_z2_append, prior_z2_pop = cs.substack(cs.Uniform(prior_prec), z2_view)
+    prior_z1_append, prior_z1_pop = cs.substack(Uniform(prior_prec), z1_view)
+    prior_z2_append, prior_z2_pop = cs.substack(Uniform(prior_prec), z2_view)
 
     def prior_append(message, latent):
         (z1, z2), theta1 = latent
@@ -150,7 +150,7 @@ def ResNetVAE(up_pass, rec_net_top, rec_nets, gen_net_top, gen_nets, obs_codec,
     z_view = lambda head: head[0]
     x_view = lambda head: head[1]
 
-    prior_codec = cs.substack(cs.Uniform(prior_prec), z_view)
+    prior_codec = cs.substack(Uniform(prior_prec), z_view)
 
     def prior_append(message, latents):
         # append bottom-up
@@ -206,8 +206,6 @@ def ResNetVAE(up_pass, rec_net_top, rec_nets, gen_net_top, gen_nets, obs_codec,
 
         def posterior_pop(message):
             # pop top-down
-            latents = []
-
             (post_mean, post_stdd), h_rec = rec_net_top(contexts[-1])
             (prior_mean, prior_stdd), h_gen = gen_net_top()
             _, pop = cs.substack(DiagGaussianLatent(post_mean, post_stdd,
@@ -239,71 +237,7 @@ def ResNetVAE(up_pass, rec_net_top, rec_nets, gen_net_top, gen_nets, obs_codec,
         z1_vals = prior_mean + std_gaussian_centres(prior_prec)[z1_idxs] * prior_stdd
         return cs.substack(obs_codec(h, z1_vals), x_view)
 
-    return (prior_append, prior_pop), likelihood, posterior
+    return BBANS((prior_append, prior_pop), likelihood, posterior)
 
 
-std_gaussian_bucket_cache = {}  # Stores bucket endpoints
-std_gaussian_centres_cache = {}  # Stores bucket centres
 
-def std_gaussian_buckets(precision):
-    """
-    Return the endpoints of buckets partioning the domain of the prior. Each
-    bucket has mass 1 / (1 << precision) under the prior.
-    """
-    if precision in std_gaussian_bucket_cache:
-        return std_gaussian_bucket_cache[precision]
-    else:
-        buckets = norm.ppf(np.linspace(0, 1, (1 << precision) + 1))
-        std_gaussian_bucket_cache[precision] = buckets
-        return buckets
-
-def std_gaussian_centres(precision):
-    """
-    Return the centres of mass of buckets partioning the domain of the prior.
-    Each bucket has mass 1 / (1 << precision) under the prior.
-    """
-    if precision in std_gaussian_centres_cache:
-        return std_gaussian_centres_cache[precision]
-    else:
-        centres = np.float32(
-            norm.ppf((np.arange(1 << precision) + 0.5) / (1 << precision)))
-        std_gaussian_centres_cache[precision] = centres
-        return centres
-
-def _gaussian_latent_cdf(mean, stdd, prior_prec, post_prec):
-    def cdf(idx):
-        x = std_gaussian_buckets(prior_prec)[idx]
-        return cs._nearest_int(norm.cdf(x, mean, stdd) * (1 << post_prec))
-    return cdf
-
-def _gaussian_latent_ppf(mean, stdd, prior_prec, post_prec):
-    def ppf(cf):
-        x = norm.ppf((cf + 0.5) / (1 << post_prec), mean, stdd)
-        # Binary search is faster than using the actual gaussian cdf for the
-        # precisions we typically use, however the cdf is O(1) whereas search
-        # is O(precision), so for high precision cdf will be faster.
-        return np.uint64(np.digitize(x, std_gaussian_buckets(prior_prec)) - 1)
-    return ppf
-
-def DiagGaussianLatentStdBins(mean, stdd, prior_prec, post_prec):
-    enc_statfun = cs._cdf_to_enc_statfun(
-        _gaussian_latent_cdf(mean, stdd, prior_prec, post_prec))
-    dec_statfun = _gaussian_latent_ppf(mean, stdd, prior_prec, post_prec)
-    return cs.NonUniform(enc_statfun, dec_statfun, post_prec)
-
-def DiagGaussianLatent(mean, stdd, bin_mean, bin_stdd, coding_prec, bin_prec):
-    """To code Gaussian data according to the bins of a different Gaussian"""
-
-    def cdf(idx):
-        x = norm.ppf(idx / (1 << bin_prec), bin_mean, bin_stdd)  # this gives lb of bin
-        return cs._nearest_int(norm.cdf(x, mean, stdd) * (1 << coding_prec))
-
-    def ppf(cf):
-        x_max = norm.ppf((cf + 0.5) / (1 << coding_prec), mean, stdd)
-        # if our gaussians have little overlap, then the cdf could be exactly 1
-        # therefore cut off at (1<<bin_prec)-1 to make sure we return a valid bin
-        return np.uint64(np.minimum((1 << bin_prec) - 1,
-                                    norm.cdf(x_max, bin_mean, bin_stdd) * (1 << bin_prec)))
-
-    enc_statfun = cs._cdf_to_enc_statfun(cdf)
-    return cs.NonUniform(enc_statfun, ppf, coding_prec)

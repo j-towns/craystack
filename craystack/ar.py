@@ -1,14 +1,24 @@
-import craystack as cs
+import numpy as np
 
 
-def AutoRegressive(data_to_append, data_to_pops, data_init):
-    def append(message, data):
-        append_ = data_to_append(data)
-        return append_(message, data)
+def AutoRegressive(elem_param_fn, data_shape, params_shape, elem_idxs, elem_codec):
+    def append(message, data, all_params=None):
+        if not all_params:
+            all_params = elem_param_fn(data)
+        for idx in reversed(elem_idxs):
+            elem_params = all_params[idx]
+            elem_append, _ = elem_codec(elem_params, idx)
+            message = elem_append(message, data[idx].astype('uint64'))
+        return message
 
     def pop(message):
-        data = data_init()
-        for data_to_pop in data_to_pops:
-            pop_ = data_to_pop(data)
-            message, data = pop_(message)
-        return message, data
+        data = np.zeros(data_shape, dtype=np.uint64)
+        all_params = np.zeros(params_shape, dtype=np.float32)
+        for idx in elem_idxs:
+            all_params = elem_param_fn(data, all_params)
+            elem_params = all_params[idx]
+            _, elem_pop = elem_codec(elem_params, idx)
+            message, elem = elem_pop(message)
+            data[idx] = elem
+        return message, (data, all_params)  # TODO: sort this param thing out
+    return append, pop

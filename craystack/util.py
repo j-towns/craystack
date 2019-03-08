@@ -2,7 +2,6 @@ import autograd.numpy as np
 from autograd import make_vjp
 from autograd.extend import vspace, VSpace
 
-
 def view_update(data, view_fun):
     view_vjp, item = make_vjp(view_fun)(data)
     item_vs = vspace(item)
