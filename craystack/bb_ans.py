@@ -238,6 +238,3 @@ def ResNetVAE(up_pass, rec_net_top, rec_nets, gen_net_top, gen_nets, obs_codec,
         return cs.substack(obs_codec(h, z1_vals), x_view)
 
     return BBANS((prior_append, prior_pop), likelihood, posterior)
-
-
-

@@ -77,7 +77,6 @@ def unflatten_benford(arr, shape):
         flat_head.append(elem)
     return np.array(flat_head[::-1]).reshape(shape), single_stack[1]
 
-
 def _ensure_nonzero_freq_bernoulli(p, precision):
     p[p == 0] += 1
     p[p == (1 << precision)] -=1

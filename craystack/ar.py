@@ -15,10 +15,10 @@ def AutoRegressive(elem_param_fn, data_shape, params_shape, elem_idxs, elem_code
         data = np.zeros(data_shape, dtype=np.uint64)
         all_params = np.zeros(params_shape, dtype=np.float32)
         for idx in elem_idxs:
-            all_params = elem_param_fn(data, all_params)
+            all_params = elem_param_fn(data, all_params, idx)
             elem_params = all_params[idx]
             _, elem_pop = elem_codec(elem_params, idx)
             message, elem = elem_pop(message)
             data[idx] = elem
-        return message, (data, all_params)  # TODO: sort this param thing out
+        return message, data
     return append, pop
