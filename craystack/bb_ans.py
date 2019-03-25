@@ -1,4 +1,3 @@
-import numpy as np
 import craystack.core as cs
 from craystack.distributions import Uniform, DiagGaussianLatent, \
     std_gaussian_centres, DiagGaussianLatentStdBins
@@ -60,81 +59,6 @@ def VAE(gen_net, rec_net, obs_codec, prior_prec, latent_prec):
             post_mean, post_stdd, latent_prec, prior_prec), z_view)
     return BBANS(prior, likelihood, posterior)
 
-def TwoLayerVAE(gen_net2_partial,
-                rec_net1, rec_net2,
-                post1_codec, obs_codec,
-                prior_prec, latent_prec,
-                get_theta):
-    """
-    rec_net1 outputs params for q(z1|x)
-    rec_net2 outputs params for q(z2|x)
-    post1_codec is to code z1 by q(z1|z2,x)
-    obs_codec is to code x by p(x|z1)"""
-    z1_view = lambda head: head[0]
-    z2_view = lambda head: head[1]
-    x_view = lambda head: head[2]
-
-    prior_z1_append, prior_z1_pop = cs.substack(Uniform(prior_prec), z1_view)
-    prior_z2_append, prior_z2_pop = cs.substack(Uniform(prior_prec), z2_view)
-
-    def prior_append(message, latent):
-        (z1, z2), theta1 = latent
-        message = prior_z1_append(message, z1)
-        message = prior_z2_append(message, z2)
-        return message
-
-    def prior_pop(message):
-        message, z2 = prior_z2_pop(message)
-        message, z1 = prior_z1_pop(message)
-        # compute theta1
-        eps1_vals = std_gaussian_centres(prior_prec)[z1]
-        z2_vals = std_gaussian_centres(prior_prec)[z2]
-        theta1 = get_theta(eps1_vals, z2_vals)
-        return message, ((z1, z2), theta1)
-
-    def likelihood(latent):
-        (z1, z2), theta1 = latent
-        # get z1_vals from the latent
-        _, _, mu1_prior, sig1_prior = np.moveaxis(theta1, -1, 0)
-        eps1_vals = std_gaussian_centres(prior_prec)[z1]
-        z1_vals = mu1_prior + sig1_prior * eps1_vals
-        append, pop = cs.substack(obs_codec(gen_net2_partial(z1_vals)), x_view)
-        def pop_(msg):
-            msg, (data, _) = pop(msg)
-            return msg, data
-        return append, pop_
-
-    def posterior(data):
-        mu1, sig1, h = rec_net1(data)
-        mu2, sig2 = rec_net2(h)
-
-        post_z2_append, post_z2_pop = cs.substack(DiagGaussianLatentStdBins(
-            mu2, sig2, latent_prec, prior_prec), z2_view)
-
-        def posterior_append(message, latents):
-            (z1, z2), theta1 = latents
-            _, _, mu1_prior, sig1_prior = np.moveaxis(theta1, -1, 0)
-            post_z1_append, _ = cs.substack(DiagGaussianLatent(mu1, sig1,
-                                                               mu1_prior, sig1_prior,
-                                                               latent_prec, prior_prec),
-                                            z1_view)
-            message = post_z1_append(message, z1)
-            message = post_z2_append(message, z2)
-            return message
-
-        def posterior_pop(message):
-            message, z2 = post_z2_pop(message)
-            z2_vals = std_gaussian_centres(prior_prec)[z2]
-            # need to return theta1 from the z1 pop
-            _, post_z1_pop = cs.substack(post1_codec(z2_vals, mu1, sig1), z1_view)
-            message, (z1, theta1) = post_z1_pop(message)
-            return message, ((z1, z2), theta1)
-
-        return posterior_append, posterior_pop
-
-    return BBANS((prior_append, prior_pop), likelihood, posterior)
-
-
 def ResNetVAE(up_pass, rec_net_top, rec_nets, gen_net_top, gen_nets, obs_codec,
               prior_prec, latent_prec):
     """
@@ -176,6 +100,7 @@ def ResNetVAE(up_pass, rec_net_top, rec_nets, gen_net_top, gen_nets, obs_codec,
 
     def posterior(data):
         # run deterministic upper-pass
+        # TODO: The data dependency is currently handled inside the Resnet model - move outside
         contexts = up_pass()
 
         def posterior_append(message, latents):
@@ -226,7 +151,7 @@ def ResNetVAE(up_pass, rec_net_top, rec_nets, gen_net_top, gen_nets, obs_codec,
                                      z_view)
                 message, latent = pop(message)
                 latents.append((latent, (prior_mean, prior_stdd)))
-            return message, (latents[::-1], h_gen)  # TODO: which h do we need for the observation?
+            return message, (latents[::-1], h_gen)
 
         return posterior_append, posterior_pop
 
