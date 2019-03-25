@@ -97,7 +97,7 @@ def test_categorical():
 
 
 def test_logistic():
-    precision = 12
+    precision = 16
     batch_size = 4
     means = rng.uniform(0, 1, batch_size)
     log_scale = rng.randn() - 4
@@ -130,10 +130,11 @@ def test_autoregressive():
     fixed_probs = rng.random((batch_size, data_size, choices))
     fixed_probs = fixed_probs / np.sum(fixed_probs, axis=-1, keepdims=True)
     elem_idxs = [(slice(None), i) for i in range(10)]  # slice for the batch dimension
-    elem_codec = lambda p: cs_dist.Categorical(p, precision)
+    elem_codec = lambda p, idx: cs_dist.Categorical(p, precision)
     check_codec((batch_size,),
-                ar.AutoRegressive(lambda x: fixed_probs,
+                ar.AutoRegressive(lambda *x: fixed_probs,
                                   (batch_size, data_size,),
+                                  fixed_probs.shape,
                                   elem_idxs,
                                   elem_codec),
                 data)
