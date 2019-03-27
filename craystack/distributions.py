@@ -145,27 +145,27 @@ def Categorical(p, prec):
     dec_statfun = _ppf_from_cumulative_buckets(cumulative_buckets)
     return NonUniform(enc_statfun, dec_statfun, prec)
 
-def _create_logistic_buckets(means, log_scale, prec):
-    buckets = np.linspace(-0.5, 0.5, 257)
-    buckets = np.broadcast_to(buckets, means.shape + (257,))
+def _create_logistic_buckets(means, log_scale, coding_prec, bin_prec):
+    buckets = np.linspace(-0.5, 0.5, (1 << bin_prec)+1)
+    buckets = np.broadcast_to(buckets, means.shape + ((1 << bin_prec)+1,))
     inv_stdv = np.exp(-log_scale)
     cdfs = inv_stdv * (buckets - means[..., np.newaxis])
     cdfs[..., 0] = -np.inf
     cdfs[..., -1] = np.inf
     cdfs = sigmoid(cdfs)
     probs = cdfs[..., 1:] - cdfs[..., :-1]
-    return _cumulative_buckets_from_probs(probs, prec)
+    return _cumulative_buckets_from_probs(probs, coding_prec)
 
-def Logistic(mean, log_scale, prec):
-    cumulative_buckets = _create_logistic_buckets(mean, log_scale, prec)
+def Logistic(mean, log_scale, coding_prec, bin_prec=8):
+    cumulative_buckets = _create_logistic_buckets(mean, log_scale, coding_prec, bin_prec)
     enc_statfun = _cdf_to_enc_statfun(_cdf_from_cumulative_buckets(cumulative_buckets))
     dec_statfun = _ppf_from_cumulative_buckets(cumulative_buckets)
-    return NonUniform(enc_statfun, dec_statfun, prec)
+    return NonUniform(enc_statfun, dec_statfun, coding_prec)
 
-def _create_logistic_mixture_buckets(means, log_scales, logit_probs, prec):
+def _create_logistic_mixture_buckets(means, log_scales, logit_probs, coding_prec, bin_prec):
     inv_stdv = np.exp(-log_scales)
-    buckets = np.linspace(-1, 1, 257)  # TODO: change hardcoding
-    buckets = np.broadcast_to(buckets, means.shape + (257,))
+    buckets = np.linspace(-1, 1, (1 << bin_prec)+1)
+    buckets = np.broadcast_to(buckets, means.shape + ((1 << bin_prec)+1,))
     cdfs = inv_stdv[..., np.newaxis] * (buckets - means[..., np.newaxis])
     cdfs[..., 0] = -np.inf
     cdfs[..., -1] = np.inf
@@ -173,16 +173,16 @@ def _create_logistic_mixture_buckets(means, log_scales, logit_probs, prec):
     prob_cpts = cdfs[..., 1:] - cdfs[..., :-1]
     mixture_probs = util.softmax(logit_probs, axis=1)
     probs = np.sum(prob_cpts * mixture_probs[..., np.newaxis], axis=1)
-    return _cumulative_buckets_from_probs(probs, prec)
+    return _cumulative_buckets_from_probs(probs, coding_prec)
 
-def LogisticMixture(theta, prec):
+def LogisticMixture(theta, coding_prec, bin_prec=8):
     """theta: means, log_scales, logit_probs"""
     means, log_scales, logit_probs = np.split(theta, 3, axis=-1)
     cumulative_buckets = _create_logistic_mixture_buckets(means, log_scales,
-                                                          logit_probs, prec)
+                                                          logit_probs, coding_prec, bin_prec)
     enc_statfun = _cdf_to_enc_statfun(_cdf_from_cumulative_buckets(cumulative_buckets))
     dec_statfun = _ppf_from_cumulative_buckets(cumulative_buckets)
-    return NonUniform(enc_statfun, dec_statfun, prec)
+    return NonUniform(enc_statfun, dec_statfun, coding_prec)
 
 std_gaussian_bucket_cache = {}  # Stores bucket endpoints
 std_gaussian_centres_cache = {}  # Stores bucket centres
