@@ -1,6 +1,7 @@
 import craystack.vectorans as vrans
 import numpy as np
 
+from craystack import util
 
 rng = np.random.RandomState(0)
 
@@ -36,11 +37,12 @@ def test_vectorans():
 def test_flatten_unflatten():
     n = 100
     shape = (7, 3)
+    prec = 12
     state = vrans.x_init(shape)
-    some_bits = rng.randint(1 << 8, size=(n,) + shape).astype(np.uint64)
+    some_bits = rng.randint(1 << prec, size=(n,) + shape).astype(np.uint64)
     freqs = np.ones(shape, dtype="uint64")
     for b in some_bits:
-        state = vrans.append(state, b, freqs, 8)
+        state = vrans.append(state, b, freqs, prec)
     flat = vrans.flatten(state)
     assert flat.dtype is np.dtype("uint32")
     state_ = vrans.unflatten(flat, shape)
