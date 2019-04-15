@@ -1,7 +1,9 @@
+import math
+
 import numpy as np
 from scipy.stats import norm
 
-from craystack.core import NonUniform
+from craystack.core import NonUniform, substack
 import craystack.util as util
 import craystack.vectorans as vrans
 from scipy.special import expit as sigmoid
@@ -76,6 +78,57 @@ def unflatten_benford(arr, shape):
         single_stack, elem = pop(single_stack)
         flat_head.append(elem)
     return np.array(flat_head[::-1]).reshape(shape), single_stack[1]
+
+def in_between_sizes(small, big):
+    sizes = []
+    half = big
+    while True:
+        sizes.append(half)
+
+        if small == half:
+            return np.array(list(reversed(sizes)))
+
+        half = math.ceil(half / 2) if half >= 2 * small else small
+
+
+def in_between_codecs(small, big):
+    sizes = in_between_sizes(small, big)
+    differences = sizes[1:] - sizes[:1]
+
+    return [substack(Benford64, lambda h: h[:d]) for d in differences]
+
+
+def resize_head_1d(message, size):
+    head, tail = message
+    should_reduce = size < head.shape[0]
+    return (reduce_head_1d if should_reduce else grow_head_1d)(message, size)
+
+
+def reduce_head_1d(message, size):
+    head, tail = message
+    codecs_and_sizes = reversed(list(zip(in_between_codecs(small=size, big=head.shape[0]),
+                                         in_between_sizes(small=size, big=head.shape[0])[:-1])))
+
+    for codec, new_size in codecs_and_sizes:
+        head, tail = message
+        append, _ = codec
+        message = head[:new_size], tail
+        message = append(message, head[new_size:])
+
+    return message
+
+
+def grow_head_1d(message, size):
+    head, tail = message
+
+    codecs = in_between_codecs(small=head.shape[0], big=size)
+    for codec in codecs:
+        head, tail = message
+        _, pop = codec
+        message, head_extension = pop(message)
+        message = np.concatenate([head, head_extension]), tail
+
+    return message
 
 def _ensure_nonzero_freq_bernoulli(p, precision):
     p[p == 0] += 1

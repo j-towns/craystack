@@ -180,3 +180,23 @@ def test_flatten_unflatten_benford():
 
 def assert_message_equal(message1, message2):
     np.testing.assert_equal(message1, message2)
+
+def test_resize_head_1d(old_size=2, new_size=4, depth=1000):
+    old_shape = (old_size,)
+
+    np.random.seed(0)
+    p = 8
+    bits = np.random.randint(1 << p, size=(depth,) + old_shape, dtype=np.uint64)
+
+    message = vrans.x_init(old_shape)
+
+    other_bits_append, _ = cs.repeat(codecs.Uniform(p), depth)
+
+    message = other_bits_append(message, bits)
+
+    resized = codecs.resize_head_1d(message, new_size)
+    reconstructed = codecs.resize_head_1d(resized, old_size)
+
+    np.testing.assert_equal(message[0], reconstructed[0])
+    np.testing.assert_equal(message[1], reconstructed[1])
+
