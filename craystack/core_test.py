@@ -232,3 +232,26 @@ def test_reshape_head(old_shape, new_shape, depth=1000):
         el, init_tail = init_tail
         el_, recon_tail = recon_tail
         assert el == el_
+
+@pytest.mark.parametrize('shape', [(100,), (1, 23), (2, 4, 5)])
+def test_flatten_unflatten_benford(shape, depth=1000):
+    np.random.seed(0)
+    p = 8
+    bits = np.random.randint(1 << p, size=(depth,) + shape, dtype=np.uint64)
+
+    message = vrans.x_init(shape)
+
+    other_bits_append, _ = cs.repeat(codecs.Uniform(p), depth)
+
+    message = other_bits_append(message, bits)
+
+    flattened = codecs.flatten_benford(message)
+    reconstructed = codecs.unflatten_benford(flattened, shape)
+
+    init_head, init_tail = message
+    recon_head, recon_tail = reconstructed
+    np.testing.assert_equal(init_head, recon_head)
+    while init_tail:
+        el, init_tail = init_tail
+        el_, recon_tail = recon_tail
+        assert el == el_
