@@ -61,25 +61,10 @@ def Benford64():
 Benford64 = Benford64()
 
 def flatten_benford(x):
-    # TODO: a more efficient system than single stack
-    head, tail = x
-    flat_head = np.ravel(head)
-    append, _ = Benford64
-    single_stack = vrans.x_init(1)[0], tail
-    for el in flat_head:
-        single_stack = append(single_stack, np.array([el]).astype('uint64'))
-    return vrans.flatten(single_stack)
+    return vrans.flatten(reshape_head(x, (1, )))
 
 def unflatten_benford(arr, shape):
-    size = np.prod(shape)
-    single_stack = vrans.unflatten(arr, (1,))
-    _, pop = Benford64
-    flat_head = []
-    for _ in range(size):
-        single_stack, elem = pop(single_stack)
-        flat_head.append(elem)
-    return np.array(flat_head[::-1]).reshape(shape), single_stack[1]
-
+    return reshape_head(vrans.unflatten(arr, (1,)), shape)
 
 def resize_head_1d_codecs(small, big):
     sizes = []
@@ -100,12 +85,10 @@ def resize_head_1d_codecs(small, big):
     codecs = [substack(Benford64, view_fun) for view_fun in view_funs]
     return list(zip(codecs, smaller_sizes))
 
-
-def resize_head_1d(message, size):
+def reshape_head_1d(message, size):
     head, tail = message
     should_reduce = size < head.shape[0]
     return (reduce_head_1d if should_reduce else grow_head_1d)(message, size)
-
 
 def reduce_head_1d(message, size):
     head, tail = message
@@ -117,7 +100,6 @@ def reduce_head_1d(message, size):
 
     return message
 
-
 def grow_head_1d(message, size):
     head, tail = message
     for (_, pop), _ in resize_head_1d_codecs(small=head.shape[0], big=size):
@@ -126,6 +108,12 @@ def grow_head_1d(message, size):
         message = np.concatenate([head, head_extension]), tail
 
     return message
+
+def reshape_head(message, shape):
+    head, tail = message
+    message = (np.ravel(head), tail)
+    head, tail = reshape_head_1d(message, size=np.prod(shape))
+    return np.reshape(head, shape), tail
 
 def _ensure_nonzero_freq_bernoulli(p, precision):
     p[p == 0] += 1

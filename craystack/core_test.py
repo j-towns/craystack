@@ -185,7 +185,7 @@ def assert_message_equal(message1, message2):
 
 @pytest.mark.parametrize('old_size', [141, 32, 17, 6, 3])
 @pytest.mark.parametrize('new_size', [141, 32, 17, 6, 3])
-def test_resize_head_1d(old_size, new_size, depth=1000):
+def test_reshape_head_1d(old_size, new_size, depth=1000):
     old_shape = (old_size,)
 
     np.random.seed(0)
@@ -198,8 +198,8 @@ def test_resize_head_1d(old_size, new_size, depth=1000):
 
     message = other_bits_append(message, bits)
 
-    resized = codecs.resize_head_1d(message, new_size)
-    reconstructed = codecs.resize_head_1d(resized, old_size)
+    resized = codecs.reshape_head_1d(message, new_size)
+    reconstructed = codecs.reshape_head_1d(resized, old_size)
 
     init_head, init_tail = message
     recon_head, recon_tail = reconstructed
@@ -209,3 +209,26 @@ def test_resize_head_1d(old_size, new_size, depth=1000):
         el_, recon_tail = recon_tail
         assert el == el_
 
+@pytest.mark.parametrize('old_shape', [(100,), (1, 23), (2, 4, 5)])
+@pytest.mark.parametrize('new_shape', [(100,), (1, 23), (2, 4, 5)])
+def test_reshape_head(old_shape, new_shape, depth=1000):
+    np.random.seed(0)
+    p = 8
+    bits = np.random.randint(1 << p, size=(depth,) + old_shape, dtype=np.uint64)
+
+    message = vrans.x_init(old_shape)
+
+    other_bits_append, _ = cs.repeat(codecs.Uniform(p), depth)
+
+    message = other_bits_append(message, bits)
+
+    resized = codecs.reshape_head(message, new_shape)
+    reconstructed = codecs.reshape_head(resized, old_shape)
+
+    init_head, init_tail = message
+    recon_head, recon_tail = reconstructed
+    np.testing.assert_equal(init_head, recon_head)
+    while init_tail:
+        el, init_tail = init_tail
+        el_, recon_tail = recon_tail
+        assert el == el_
