@@ -181,7 +181,7 @@ def test_flatten_unflatten_benford():
 def assert_message_equal(message1, message2):
     np.testing.assert_equal(message1, message2)
 
-def test_resize_head_1d(old_size=2, new_size=4, depth=1000):
+def test_resize_head_1d(old_size=32, new_size=6, depth=1000):
     old_shape = (old_size,)
 
     np.random.seed(0)
@@ -197,6 +197,11 @@ def test_resize_head_1d(old_size=2, new_size=4, depth=1000):
     resized = codecs.resize_head_1d(message, new_size)
     reconstructed = codecs.resize_head_1d(resized, old_size)
 
-    np.testing.assert_equal(message[0], reconstructed[0])
-    np.testing.assert_equal(message[1], reconstructed[1])
+    init_head, init_tail = message
+    recon_head, recon_tail = reconstructed
+    np.testing.assert_equal(init_head, recon_head)
+    while init_tail:
+        el, init_tail = init_tail
+        el_, recon_tail = recon_tail
+        assert el == el_
 

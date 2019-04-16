@@ -1,4 +1,5 @@
 import math
+from functools import partial
 
 import numpy as np
 from scipy.stats import norm
@@ -93,9 +94,10 @@ def in_between_sizes(small, big):
 
 def in_between_codecs(small, big):
     sizes = in_between_sizes(small, big)
-    differences = sizes[1:] - sizes[:1]
+    differences = sizes[1:] - sizes[:-1]
 
-    return [substack(Benford64, lambda h: h[:d]) for d in differences]
+    view_funs = [partial(lambda h, d=d: h[:d]) for d in differences]
+    return [substack(Benford64, view_fun) for view_fun in view_funs]
 
 
 def resize_head_1d(message, size):
@@ -123,9 +125,9 @@ def grow_head_1d(message, size):
 
     codecs = in_between_codecs(small=head.shape[0], big=size)
     for codec in codecs:
-        head, tail = message
         _, pop = codec
         message, head_extension = pop(message)
+        head, tail = message
         message = np.concatenate([head, head_extension]), tail
 
     return message
