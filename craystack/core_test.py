@@ -1,5 +1,6 @@
 import numpy as np
 import numpy.random as rng
+import pytest
 
 import craystack as cs
 import craystack.vectorans as vrans
@@ -181,7 +182,10 @@ def test_flatten_unflatten_benford():
 def assert_message_equal(message1, message2):
     np.testing.assert_equal(message1, message2)
 
-def test_resize_head_1d(old_size=32, new_size=6, depth=1000):
+
+@pytest.mark.parametrize('old_size', [141, 32, 17, 6, 3])
+@pytest.mark.parametrize('new_size', [141, 32, 17, 6, 3])
+def test_resize_head_1d(old_size, new_size, depth=1000):
     old_shape = (old_size,)
 
     np.random.seed(0)

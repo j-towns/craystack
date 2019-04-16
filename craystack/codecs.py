@@ -80,24 +80,25 @@ def unflatten_benford(arr, shape):
         flat_head.append(elem)
     return np.array(flat_head[::-1]).reshape(shape), single_stack[1]
 
-def in_between_sizes(small, big):
+
+def resize_head_1d_codecs(small, big):
     sizes = []
     half = big
     while True:
         sizes.append(half)
 
         if small == half:
-            return np.array(list(reversed(sizes)))
+            break
 
         half = math.ceil(half / 2) if half >= 2 * small else small
 
-
-def in_between_codecs(small, big):
-    sizes = in_between_sizes(small, big)
-    differences = sizes[1:] - sizes[:-1]
-
-    view_funs = [partial(lambda h, d=d: h[:d]) for d in differences]
-    return [substack(Benford64, view_fun) for view_fun in view_funs]
+    sizes = np.array(list(reversed(sizes)))
+    smaller_sizes = sizes[:-1]
+    bigger_sizes = sizes[1:]
+    steps = bigger_sizes - smaller_sizes
+    view_funs = [partial(lambda h, s=s: h[:s]) for s in steps]
+    codecs = [substack(Benford64, view_fun) for view_fun in view_funs]
+    return list(zip(codecs, smaller_sizes))
 
 
 def resize_head_1d(message, size):
@@ -108,12 +109,9 @@ def resize_head_1d(message, size):
 
 def reduce_head_1d(message, size):
     head, tail = message
-    codecs_and_sizes = reversed(list(zip(in_between_codecs(small=size, big=head.shape[0]),
-                                         in_between_sizes(small=size, big=head.shape[0])[:-1])))
 
-    for codec, new_size in codecs_and_sizes:
+    for (append, _), new_size in reversed(resize_head_1d_codecs(small=size, big=head.shape[0])):
         head, tail = message
-        append, _ = codec
         message = head[:new_size], tail
         message = append(message, head[new_size:])
 
@@ -122,10 +120,7 @@ def reduce_head_1d(message, size):
 
 def grow_head_1d(message, size):
     head, tail = message
-
-    codecs = in_between_codecs(small=head.shape[0], big=size)
-    for codec in codecs:
-        _, pop = codec
+    for (_, pop), _ in resize_head_1d_codecs(small=head.shape[0], big=size):
         message, head_extension = pop(message)
         head, tail = message
         message = np.concatenate([head, head_extension]), tail
