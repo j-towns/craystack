@@ -96,13 +96,17 @@ def test_categorical():
 
 
 def test_logistic():
-    precision = 16
+    rng = np.random.RandomState(0)
+    coding_precision = 16
+    bin_precision = 8
     batch_size = 4
     means = rng.uniform(0, 1, batch_size)
-    log_scale = rng.randn() - 4
+    log_scale = rng.randn()
     # type is important!
     data = np.array([rng.choice(256) for _ in range(batch_size)]).astype('uint64')
-    check_codec((batch_size,), codecs.Logistic(means, log_scale, precision), data)
+    check_codec((batch_size,), codecs.Logistic(means, log_scale,
+                                               coding_precision, bin_precision),
+                data)
 
 
 def test_logistic_mixture():

@@ -194,10 +194,37 @@ def _create_logistic_buckets(means, log_scale, coding_prec, bin_prec):
     probs = cdfs[..., 1:] - cdfs[..., :-1]
     return _cumulative_buckets_from_probs(probs, coding_prec)
 
-def Logistic(mean, log_scale, coding_prec, bin_prec=8):
-    cumulative_buckets = _create_logistic_buckets(mean, log_scale, coding_prec, bin_prec)
-    enc_statfun = _cdf_to_enc_statfun(_cdf_from_cumulative_buckets(cumulative_buckets))
-    dec_statfun = _ppf_from_cumulative_buckets(cumulative_buckets)
+def _logistic_cdf(means, log_scale, coding_prec, bin_prec):
+    inv_stdv = np.exp(-log_scale)
+    def cdf(idx):
+        # can reduce mem footprint
+        buckets = np.linspace(-0.5, 0.5, (1 << bin_prec)+1)
+        buckets = np.append(buckets, np.inf)
+        bucket_ub = buckets[idx+1]
+        scaled = inv_stdv * (bucket_ub - means)
+        cdf = sigmoid(scaled)
+        return _nearest_int(cdf * (1 << coding_prec))
+    return cdf
+
+def _logistic_ppf(means, log_scale, coding_prec, bin_prec):
+    stdv = np.exp(log_scale)
+    def ppf(cf):
+        x = (cf + 0.5) / (1 << coding_prec)
+        logit = np.log(x) - np.log(1-x)
+        x = logit * stdv + means
+        bins = np.linspace(-0.5, 0.5, (1 << bin_prec)+1)[1:]
+        return np.uint64(np.digitize(x, bins) - 1)
+    return ppf
+
+def Logistic(mean, log_scale, coding_prec, bin_prec, no_zero_freqs=True, log_scale_min=-6):
+    if no_zero_freqs:
+        cumulative_buckets = _create_logistic_buckets(mean, log_scale, coding_prec, bin_prec)
+        enc_statfun = _cdf_to_enc_statfun(_cdf_from_cumulative_buckets(cumulative_buckets))
+        dec_statfun = _ppf_from_cumulative_buckets(cumulative_buckets)
+    else:
+        log_scale = max(log_scale, log_scale_min)
+        enc_statfun = _cdf_to_enc_statfun(_logistic_cdf(mean, log_scale, coding_prec, bin_prec))
+        dec_statfun = _logistic_ppf(mean, log_scale, coding_prec, bin_prec)
     return NonUniform(enc_statfun, dec_statfun, coding_prec)
 
 def _create_logistic_mixture_buckets(means, log_scales, logit_probs, coding_prec, bin_prec):
