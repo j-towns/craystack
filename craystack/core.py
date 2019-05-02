@@ -81,15 +81,15 @@ def repeat(codec, n):
 
 def substack(codec, view_fun):
     append_, pop_ = codec
-    def append(message, data):
+    def append(message, data, *args, **kwargs):
         head, tail = message
         subhead, update = util.view_update(head, view_fun)
-        subhead, tail = append_((subhead, tail), data)
+        subhead, tail = append_((subhead, tail), data, *args, **kwargs)
         return update(subhead), tail
-    def pop(message):
+    def pop(message, *args, **kwargs):
         head, tail = message
         subhead, update = util.view_update(head, view_fun)
-        (subhead, tail), data = pop_((subhead, tail))
+        (subhead, tail), data = pop_((subhead, tail), *args, **kwargs)
         return (update(subhead), tail), data
     return append, pop
 
