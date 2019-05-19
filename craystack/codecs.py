@@ -109,14 +109,11 @@ def serial(codecs):
 
 def serial_with_shapes(codecs, shapes):
     """
-    Applies given codecs in series on a sequence of symbols of various shapes.
-    The shape of each symbol is given through shapes.
-    Handles reshaping of the ANS stack head.
+    Applies given codecs in series on a sequence of symbols requiring various ANS stack head shapes.
+    The head shape required for each symbol is given through shapes.
     """
 
     def reshape_append(append, shape, message, symbol):
-        assert symbol.shape == shape
-
         message = reshape_head(message, shape)
         message = append(message, symbol)
         return message

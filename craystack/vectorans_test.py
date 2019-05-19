@@ -1,8 +1,6 @@
 import craystack.vectorans as vrans
 import numpy as np
 
-from craystack import util
-
 rng = np.random.RandomState(0)
 
 
