@@ -79,6 +79,27 @@ def repeat(codec, n):
         return message, np.asarray(symbols)
     return append, pop
 
+def serial(codecs):
+    """
+    Applies given codecs in series.
+
+    Codecs and symbols can be any iterable.
+    Codecs are allowed to change the shape of the ANS stack head.
+    """
+    def append(message, symbols):
+        for (append, _), symbol in reversed(list(zip(codecs, symbols))):
+            message = append(message, symbol)
+        return message
+
+    def pop(message):
+        symbols = []
+        for _, pop in codecs:
+            message, symbol = pop(message)
+            symbols.append(symbol)
+        return message, symbols
+
+    return append, pop
+
 def substack(codec, view_fun):
     append_, pop_ = codec
     def append(message, data, *args, **kwargs):
