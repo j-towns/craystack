@@ -1,3 +1,5 @@
+from itertools import repeat
+
 import numpy as np
 import numpy.random as rng
 import pytest
@@ -115,6 +117,18 @@ def test_serial_resized(shape2, shape1=(2, 3, 5), precision=4):
                                   [resize_codec] +
                                   [codec for _ in data2]), data)
 
+@pytest.mark.parametrize('shape2', [(6, ), (5, ), (4, )])
+def test_serial_with_shapes(shape2, shape1=(5, ), precision=4):
+    rng.seed(0)
+    data1 = rng.randint(precision, size=(2,) + shape1, dtype="uint64")
+    data2 = rng.randint(precision, size=(8,) + shape2, dtype="uint64")
+    data = list(data1) + list(data2)
+
+    codec = codecs.Uniform(precision)
+
+    check_codec(shape2, codecs.serial_with_shapes(
+        repeat(codec, len(data)),
+        [d.shape for d in data]), data)
 
 def test_bernoulli():
     precision = 4
