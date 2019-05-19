@@ -3,8 +3,8 @@ import numpy.random as rng
 import pytest
 
 import craystack as cs
-import craystack.vectorans as vrans
 import craystack.codecs as codecs
+import craystack.vectorans as vrans
 
 
 def check_codec(head_shape, codec, data):
@@ -62,6 +62,7 @@ def test_substack():
     np.testing.assert_equal(message, message_)
     np.testing.assert_equal(data, data_)
 
+
 def test_parallel():
     precs = [1, 2, 4, 8, 16]
     szs = [2, 3, 4, 5, 6]
@@ -75,6 +76,44 @@ def test_parallel():
     data = [rng.randint(1 << p, size=size, dtype='uint64')
             for p, size in zip(precs, szs)]
     check_codec(sum(szs), cs.parallel(u_codecs, view_funs), data)
+
+
+def test_serial(precision=32):
+    shape = (2, 3, 4)
+    data1 = rng.randint(precision, size=(7,) + shape, dtype="uint64")
+    data2 = rng.randint(2 ** 31, 2 ** 63, size=(5,) + shape, dtype="uint64")
+    data = list(data1) + list(data2)
+
+    check_codec(shape, cs.serial([codecs.Uniform(precision) for _ in data1] +
+                                 [codecs.Benford64 for _ in data2]), data)
+
+
+@pytest.mark.parametrize('shape2', [(2, 3, 6), (2, 3, 5)]) # TODO: (2, 3, 4)
+def test_serial_resized(shape2, shape1=(2, 3, 5), precision=4):
+    data1 = rng.randint(precision, size=(7,) + shape1, dtype="uint64")
+    data2 = rng.randint(precision, size=(5,) + shape2, dtype="uint64")
+    data = list(data1) + list(data2)
+
+    codec = codecs.Uniform(precision)
+    append, pop = codec
+
+    def append_resize(message, symbol):
+        assert message[0].shape == shape2
+        message = codecs.reshape_head(message, shape1)
+        message = append(message, symbol)
+        return message
+
+    def pop_resize(message):
+        assert message[0].shape == shape1
+        message, symbol = pop(message)
+        message = codecs.reshape_head(message, shape2)
+        return message, symbol
+
+    resize_codec = (append_resize, pop_resize)
+
+    check_codec(shape2, cs.serial([codec for _ in data1[:-1]] +
+                                  [resize_codec] +
+                                  [codec for _ in data2]), data)
 
 
 def test_bernoulli():
@@ -136,11 +175,12 @@ def test_autoregressive():
     elem_codec = lambda p, idx: codecs.Categorical(p, precision)
     check_codec((batch_size,),
                 codecs.AutoRegressive(lambda *x: fixed_probs,
-                                  (batch_size, data_size,),
-                                  fixed_probs.shape,
-                                  elem_idxs,
-                                  elem_codec),
+                                      (batch_size, data_size,),
+                                      fixed_probs.shape,
+                                      elem_idxs,
+                                      elem_codec),
                 data)
+
 
 def test_gaussian_db():
     bin_precision = 8
@@ -148,19 +188,20 @@ def test_gaussian_db():
     batch_size = 5
 
     bin_means = rng.randn()
-    bin_stdds = np.exp(rng.randn()/10)
+    bin_stdds = np.exp(rng.randn() / 10)
 
     # if the gaussian distributions have little overlap then will
     # get zero freq errors
-    means = bin_means + rng.randn()/10
-    stdds = bin_stdds * np.exp(rng.randn()/10.)
+    means = bin_means + rng.randn() / 10
+    stdds = bin_stdds * np.exp(rng.randn() / 10.)
 
     data = np.array([rng.choice(1 << bin_precision) for _ in range(batch_size)])
 
     check_codec((batch_size,),
                 codecs.DiagGaussianLatent(means, stdds, bin_means, bin_stdds,
-                                      coding_precision, bin_precision),
+                                          coding_precision, bin_precision),
                 data)
+
 
 def test_flatten_unflatten_benford():
     n = 100
@@ -202,8 +243,8 @@ def test_reshape_head_1d(old_size, new_size, depth=1000):
 
     message = other_bits_append(message, bits)
 
-    resized = codecs.reshape_head_1d(message, new_size)
-    reconstructed = codecs.reshape_head_1d(resized, old_size)
+    resized = codecs._reshape_head_1d(message, new_size)
+    reconstructed = codecs._reshape_head_1d(resized, old_size)
 
     init_head, init_tail = message
     recon_head, recon_tail = reconstructed
@@ -212,6 +253,7 @@ def test_reshape_head_1d(old_size, new_size, depth=1000):
         el, init_tail = init_tail
         el_, recon_tail = recon_tail
         assert el == el_
+
 
 @pytest.mark.parametrize('old_shape', [(100,), (1, 23), (2, 4, 5)])
 @pytest.mark.parametrize('new_shape', [(100,), (1, 23), (2, 4, 5)])
@@ -236,6 +278,7 @@ def test_reshape_head(old_shape, new_shape, depth=1000):
         el, init_tail = init_tail
         el_, recon_tail = recon_tail
         assert el == el_
+
 
 @pytest.mark.parametrize('shape', [(100,), (1, 23), (2, 4, 5)])
 def test_flatten_unflatten_benford(shape, depth=1000):

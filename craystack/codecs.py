@@ -66,7 +66,7 @@ def flatten_benford(x):
 def unflatten_benford(arr, shape):
     return reshape_head(vrans.unflatten(arr, (1,)), shape)
 
-def resize_head_1d_codecs(small, big):
+def _resize_head_1d_codecs(small, big):
     sizes = []
     half = big
     while True:
@@ -85,24 +85,24 @@ def resize_head_1d_codecs(small, big):
     codecs = [substack(Benford64, view_fun) for view_fun in view_funs]
     return list(zip(codecs, smaller_sizes))
 
-def reshape_head_1d(message, size):
+def _reshape_head_1d(message, size):
     head, tail = message
     should_reduce = size < head.shape[0]
-    return (reduce_head_1d if should_reduce else grow_head_1d)(message, size)
+    return (_reduce_head_1d if should_reduce else _grow_head_1d)(message, size)
 
-def reduce_head_1d(message, size):
+def _reduce_head_1d(message, size):
     head, tail = message
 
-    for (append, _), new_size in reversed(resize_head_1d_codecs(small=size, big=head.shape[0])):
+    for (append, _), new_size in reversed(_resize_head_1d_codecs(small=size, big=head.shape[0])):
         head, tail = message
         message = head[:new_size], tail
         message = append(message, head[new_size:])
 
     return message
 
-def grow_head_1d(message, size):
+def _grow_head_1d(message, size):
     head, tail = message
-    for (_, pop), _ in resize_head_1d_codecs(small=head.shape[0], big=size):
+    for (_, pop), _ in _resize_head_1d_codecs(small=head.shape[0], big=size):
         message, head_extension = pop(message)
         head, tail = message
         message = np.concatenate([head, head_extension]), tail
@@ -112,7 +112,7 @@ def grow_head_1d(message, size):
 def reshape_head(message, shape):
     head, tail = message
     message = (np.ravel(head), tail)
-    head, tail = reshape_head_1d(message, size=np.prod(shape))
+    head, tail = _reshape_head_1d(message, size=np.prod(shape))
     return np.reshape(head, shape), tail
 
 def random_stack(flat_len, shape, rng=np.random):
