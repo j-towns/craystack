@@ -1,5 +1,4 @@
-import craystack.core as cs
-from craystack.codecs import Uniform, \
+from craystack.codecs import substack, Uniform, \
     std_gaussian_centres, DiagGaussianLatentStdBins
 
 
@@ -47,15 +46,15 @@ def VAE(gen_net, rec_net, obs_codec, prior_prec, latent_prec):
     z_view = lambda head: head[0]
     x_view = lambda head: head[1]
 
-    prior = cs.substack(Uniform(prior_prec), z_view)
+    prior = substack(Uniform(prior_prec), z_view)
 
     def likelihood(latent_idxs):
         z = std_gaussian_centres(prior_prec)[latent_idxs]
-        return cs.substack(obs_codec(gen_net(z)), x_view)
+        return substack(obs_codec(gen_net(z)), x_view)
 
     def posterior(data):
         post_mean, post_stdd = rec_net(data)
-        return cs.substack(DiagGaussianLatentStdBins(
+        return substack(DiagGaussianLatentStdBins(
             post_mean, post_stdd, latent_prec, prior_prec), z_view)
     return BBANS(prior, likelihood, posterior)
 

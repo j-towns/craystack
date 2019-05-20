@@ -88,10 +88,10 @@ def test_serial(precision=32):
                                  [codecs.Benford64 for _ in data2]), data)
 
 
-@pytest.mark.parametrize('shape2', [(2, 3, 6), (2, 3, 5)]) # TODO: (2, 3, 4)
-def test_serial_resized(shape2, shape1=(2, 3, 5), precision=4):
+@pytest.mark.parametrize('shape2', [(1, 6, ), (1, 5, ), (1, 4, )])
+def test_serial_resized(shape2, shape1=(5, ), precision=4):
     data1 = rng.randint(precision, size=(7,) + shape1, dtype="uint64")
-    data2 = rng.randint(precision, size=(5,) + shape2, dtype="uint64")
+    data2 = rng.randint(precision, size=(20,) + shape2, dtype="uint64")
     data = list(data1) + list(data2)
 
     codec = codecs.Uniform(precision)
@@ -114,7 +114,6 @@ def test_serial_resized(shape2, shape1=(2, 3, 5), precision=4):
     check_codec(shape2, cs.serial([codec for _ in data1[:-1]] +
                                   [resize_codec] +
                                   [codec for _ in data2]), data)
-
 
 def test_bernoulli():
     precision = 4
