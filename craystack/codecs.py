@@ -231,6 +231,8 @@ def _resize_head_1d_codecs(small, big):
 
 def _reshape_head_1d(message, size):
     head, tail = message
+    if size == head.shape[0]:
+        return message
     should_reduce = size < head.shape[0]
     return (_reduce_head_1d if should_reduce else _grow_head_1d)(message, size)
 
