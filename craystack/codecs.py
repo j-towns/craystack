@@ -464,6 +464,31 @@ def DiagGaussianLatent(mean, stdd, bin_mean, bin_stdd, coding_prec, bin_prec):
     enc_statfun = _cdf_to_enc_statfun(cdf)
     return NonUniform(enc_statfun, ppf, coding_prec)
 
+def DiagGaussianLatentUnifBins(mean, stdd, bin_min, bin_max, coding_prec, n_bins,
+                               rebalanced=True):
+    if rebalanced:
+        bins = np.linspace(bin_min, bin_max, n_bins)
+        bins = np.broadcast_to(np.moveaxis(bins, 0, -1), mean.shape + (n_bins,))
+        cdfs = norm.cdf(bins, mean[..., np.newaxis], stdd[..., np.newaxis])
+        cdfs[..., 0] = 0
+        cdfs[..., -1] = 1
+        pmfs = cdfs[..., 1:] - cdfs[..., :-1]
+        buckets = _cumulative_buckets_from_probs(pmfs, coding_prec)
+        enc_statfun = _cdf_to_enc_statfun(_cdf_from_cumulative_buckets(buckets))
+        dec_statfun = _ppf_from_cumulative_buckets(buckets)
+    else:
+        bin_width = (bin_max - bin_min)/float(n_bins)
+        def cdf(idx):
+            bin_ub = bin_min + idx * bin_width
+            return _nearest_int(norm.cdf(bin_ub, mean, stdd) * (1 << coding_prec))
+        def ppf(cf):
+            x_max = norm.ppf((cf + 0.5) / (1 << coding_prec), mean, stdd)
+            bin_idx = np.floor((x_max - bin_min) / bin_width)
+            return np.uint64(np.minimum(n_bins-1, bin_idx))
+        enc_statfun = _cdf_to_enc_statfun(cdf)
+        dec_statfun = ppf
+    return NonUniform(enc_statfun, dec_statfun, coding_prec)
+
 def AutoRegressive(elem_param_fn, data_shape, params_shape, elem_idxs, elem_codec):
     def append(message, data, all_params=None):
         if not all_params:

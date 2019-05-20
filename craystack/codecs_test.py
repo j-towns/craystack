@@ -203,6 +203,22 @@ def test_gaussian_db():
                                           coding_precision, bin_precision),
                 data)
 
+def test_gaussian_ub():
+    bin_lb = np.array([-2., -3.])
+    bin_ub = np.array([2., 3.])
+    n_bins = 1000
+    coding_precision = 16
+    batch_size = 5
+
+    means = rng.randn(batch_size, 2) / 10
+    stdds = np.exp(rng.random((batch_size, 2)) / 2)
+
+    data = np.array([rng.choice(n_bins, 2) for _ in range(batch_size)])
+
+    check_codec((batch_size, 2),
+                codecs.DiagGaussianLatentUnifBins(means, stdds, bin_lb, bin_ub,
+                                                  coding_precision, n_bins),
+                data)
 
 def test_flatten_unflatten_benford():
     n = 100
