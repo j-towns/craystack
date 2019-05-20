@@ -21,7 +21,7 @@ def cons_list_slice(ls, n):
         n -= 1
     return ls, np.asarray(slc)
 
-def append(x, starts, freqs, precisions):
+def push(x, starts, freqs, precisions):
     head, tail = x
     # assert head.shape == starts.shape == freqs.shape
     idxs = head >= ((rans_l >> precisions) << 32) * freqs
