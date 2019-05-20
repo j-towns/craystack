@@ -107,29 +107,6 @@ def serial(codecs):
 
     return append, pop
 
-def serial_with_shapes(codecs, shapes):
-    """
-    Applies given codecs in series on a sequence of symbols requiring various ANS stack head shapes.
-    The head shape required for each symbol is given through shapes.
-    """
-
-    def reshape_append(append, shape, message, symbol):
-        message = reshape_head(message, shape)
-        message = append(message, symbol)
-        return message
-
-    def reshape_pop(pop, shape, message):
-        message = reshape_head(message, shape)
-        message, symbol = pop(message)
-        return message, symbol
-
-    create_reshape_append = lambda append, shape: lambda m, s: reshape_append(append, shape, m, s)
-    create_reshape_pop = lambda pop, shape: lambda m: reshape_pop(pop, shape, m)
-
-    return serial([
-        (create_reshape_append(append, shape), create_reshape_pop(pop, shape))
-        for (append, pop), shape in zip(codecs, shapes)])
-
 def substack(codec, view_fun):
     append_, pop_ = codec
     def append(message, data, *args, **kwargs):
