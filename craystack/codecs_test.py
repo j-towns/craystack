@@ -1,5 +1,3 @@
-from itertools import repeat
-
 import numpy as np
 import numpy.random as rng
 import pytest
