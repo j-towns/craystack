@@ -16,7 +16,7 @@ builders for various kinds of model.
 
 The codecs in Craystack are 
 
- - **Composible**, meaning you can combine and mix them to code different
+ - **Composable**, meaning you can combine and mix them to code different
    combinations of data types, according to sophisticated models, in parallel or
    in series.
  - **Stacky**, meaning last-in-first-out (LIFO). The last item that an encoder
