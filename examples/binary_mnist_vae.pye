@@ -60,7 +60,7 @@ images = np.split(np.reshape(images, (num_images, -1)), num_batches)
 ## Encode
 # Initialize message with some 'extra' bits
 encode_t0 = time.time()
-init_message = vrans.message_init(obs_size + latent_size)
+init_message = vrans.x_init(obs_size + latent_size)
 
 other_bits = rng.randint(1 << 8, size=(3,) + latent_shape, dtype=np.uint64)
 init_message = other_bits_append(init_message, other_bits)
