@@ -267,7 +267,7 @@ def reshape_head(message, shape):
 def random_stack(flat_len, shape, rng=np.random):
     """Generate a random vrans stack"""
     arr = rng.randint(1 << 32, size=flat_len, dtype='uint32')
-    return unflatten_benford(arr, shape)
+    return unflatten(arr, shape)
 
 def _ensure_nonzero_freq_bernoulli(p, precision):
     p[p == 0] += 1
