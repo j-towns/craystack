@@ -211,73 +211,57 @@ def Benford64():
     return push, pop
 Benford64 = Benford64()
 
-def flatten_benford(x):
+def flatten(message):
     """
-    Flatten a message head and tail into a 1d array, assuming
-    that the stack heads are Benford distributed.
-    """
-    return vrans.flatten(reshape_head(x, (1,)))
+    Flatten a message head and tail into a 1d array. Use this when finished
+    coding to map to a message representation which can easily be saved to
+    disk.
 
-def unflatten_benford(arr, shape):
+    If the message head is non-scalar it will be efficiently flattened by
+    coding elements as if they were data.
     """
-    Unlatten a 1d array, into a vrans state with desired shape,
-    assuming that the stack heads are Benford distributed.
+    return vrans.flatten(reshape_head(message, (1,)))
+
+def unflatten(arr, shape):
+    """
+    Unflatten a 1d array, into a vrans message with desired shape. This is the
+    inverse of flatten.
     """
     return reshape_head(vrans.unflatten(arr, (1,)), shape)
 
-def _resize_head_1d_codecs(small, big):
-    sizes = []
-    half = big
-    while True:
-        sizes.append(half)
+def _fold_sizes(small, big):
+    sizes = [small]
+    while small != big:
+        small = 2 * small if 2 * small <= big else big
+        sizes.append(small)
+    return sizes
 
-        if small == half:
-            break
+_fold_codec = lambda diff: substack(Benford64, lambda head: head[:diff])
 
-        half = math.ceil(half / 2) if half >= 2 * small else small
+def _fold_codecs(sizes):
+    return [_fold_codec(diff) for diff in np.subtract(sizes[1:], sizes[:-1])]
 
-    sizes = np.array(list(reversed(sizes)))
-    smaller_sizes = sizes[:-1]
-    bigger_sizes = sizes[1:]
-    steps = bigger_sizes - smaller_sizes
-    view_funs = [partial(lambda h, s=s: h[:s]) for s in steps]
-    codecs = [substack(Benford64, view_fun) for view_fun in view_funs]
-    return list(zip(codecs, smaller_sizes))
-
-def _reshape_head_1d(message, size):
+def _resize_head_1d(message, size):
     head, tail = message
-    if size == head.shape[0]:
-        return message
-    should_reduce = size < head.shape[0]
-    return (_reduce_head_1d if should_reduce else _grow_head_1d)(message, size)
-
-def _reduce_head_1d(message, size):
-    head, tail = message
-
-    for (push, _), new_size in reversed(_resize_head_1d_codecs(small=size, big=head.shape[0])):
-        head, tail = message
-        message = head[:new_size], tail
-        message = push(message, head[new_size:])
-
-    return message
-
-def _grow_head_1d(message, size):
-    head, tail = message
-    for (_, pop), _ in _resize_head_1d_codecs(small=head.shape[0], big=size):
-        message, head_extension = pop(message)
-        head, tail = message
-        message = np.concatenate([head, head_extension]), tail
-
-    return message
+    sizes = _fold_sizes(*sorted((size, np.size(head))))
+    codecs = _fold_codecs(sizes)
+    if size < np.size(head):
+        for (push, _), new_size in reversed(list(zip(codecs, sizes[:-1]))):
+            head, tail = push((head[:new_size], tail), head[new_size:])
+    elif size > np.size(head):
+        for _, pop in codecs:
+            (head, tail), head_ex = pop((head, tail))
+            head = np.concatenate([head, head_ex])
+    return head, tail
 
 def reshape_head(message, shape):
     """
-    Reshape the head of a message, assuming that the message stack
-    heads are Benford distributed.
+    Reshape the head of a message. Note that growing the head uses up
+    information from the message and will fail if the message is empty.
     """
     head, tail = message
     message = (np.ravel(head), tail)
-    head, tail = _reshape_head_1d(message, size=np.prod(shape))
+    head, tail = _resize_head_1d(message, size=np.prod(shape))
     return np.reshape(head, shape), tail
 
 def random_stack(flat_len, shape, rng=np.random):

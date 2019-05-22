@@ -219,7 +219,7 @@ def test_gaussian_ub():
                                                   coding_precision, n_bins),
                 data)
 
-def test_flatten_unflatten_benford():
+def test_flatten_unflatten():
     n = 100
     shape = (7, 3)
     p = 12
@@ -228,13 +228,13 @@ def test_flatten_unflatten_benford():
     freqs = np.ones(shape, dtype="uint64")
     for b in some_bits:
         state = vrans.push(state, b, freqs, p)
-    flat = codecs.flatten_benford(state)
+    flat = codecs.flatten(state)
     flat_ = vrans.flatten(state)
     print('Normal flat len: {}'.format(len(flat_) * 32))
     print('Benford flat len: {}'.format(len(flat) * 32))
     assert flat.dtype is np.dtype("uint32")
-    state_ = codecs.unflatten_benford(flat, shape)
-    flat_ = codecs.flatten_benford(state_)
+    state_ = codecs.unflatten(flat, shape)
+    flat_ = codecs.flatten(state_)
     assert np.all(flat == flat_)
     assert np.all(state[0] == state_[0])
     assert state[1] == state_[1]
@@ -246,7 +246,7 @@ def assert_message_equal(message1, message2):
 
 @pytest.mark.parametrize('old_size', [141, 32, 17, 6, 3])
 @pytest.mark.parametrize('new_size', [141, 32, 17, 6, 3])
-def test_reshape_head_1d(old_size, new_size, depth=1000):
+def test_resize_head_1d(old_size, new_size, depth=1000):
     old_shape = (old_size,)
 
     np.random.seed(0)
@@ -259,8 +259,8 @@ def test_reshape_head_1d(old_size, new_size, depth=1000):
 
     message = other_bits_push(message, bits)
 
-    resized = codecs._reshape_head_1d(message, new_size)
-    reconstructed = codecs._reshape_head_1d(resized, old_size)
+    resized = codecs._resize_head_1d(message, new_size)
+    reconstructed = codecs._resize_head_1d(resized, old_size)
 
     init_head, init_tail = message
     recon_head, recon_tail = reconstructed
@@ -297,7 +297,7 @@ def test_reshape_head(old_shape, new_shape, depth=1000):
 
 
 @pytest.mark.parametrize('shape', [(100,), (1, 23), (2, 4, 5)])
-def test_flatten_unflatten_benford(shape, depth=1000):
+def test_flatten_unflatten(shape, depth=1000):
     np.random.seed(0)
     p = 8
     bits = np.random.randint(1 << p, size=(depth,) + shape, dtype=np.uint64)
@@ -308,8 +308,8 @@ def test_flatten_unflatten_benford(shape, depth=1000):
 
     message = other_bits_push(message, bits)
 
-    flattened = codecs.flatten_benford(message)
-    reconstructed = codecs.unflatten_benford(flattened, shape)
+    flattened = codecs.flatten(message)
+    reconstructed = codecs.unflatten(flattened, shape)
 
     init_head, init_tail = message
     recon_head, recon_tail = reconstructed
