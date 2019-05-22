@@ -46,8 +46,7 @@ vae_append, vae_pop = cs.repeat(cs.substack(
 
 # Codec for adding extra bits to the start of the chain (necessary for bits
 # back).
-other_bits_append, _ = cs.substack(cs.repeat(cs.Uniform(8), 3),
-                                   lambda h: vae_view(h)[0])
+other_bits_append, _ = cs.substack(cs.Uniform(q_precision), lambda h: vae_view(h)[0])
 
 ## Load mnist images
 images = datasets.MNIST('mnist', train=False, download=True).data.numpy()
@@ -59,7 +58,8 @@ images = np.split(np.reshape(images, (num_images, -1)), num_batches)
 encode_t0 = time.time()
 init_message = cs.message_init(obs_size + latent_size)
 
-other_bits = rng.randint(1 << 8, size=(3,) + latent_shape, dtype=np.uint64)
+# Enough bits to pop a single latent
+other_bits = rng.randint(1 << q_precision, size=latent_shape, dtype=np.uint64)
 init_message = other_bits_append(init_message, other_bits)
 
 # Encode the mnist images
