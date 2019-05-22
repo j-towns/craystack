@@ -1,5 +1,5 @@
 from craystack.codecs import substack, Uniform, \
-    std_gaussian_centres, DiagGaussianLatentStdBins
+    std_gaussian_centres, DiagGaussian_StdBins
 
 
 def BBANS(prior, likelihood, posterior):
@@ -54,7 +54,7 @@ def VAE(gen_net, rec_net, obs_codec, prior_prec, latent_prec):
 
     def posterior(data):
         post_mean, post_stdd = rec_net(data)
-        return substack(DiagGaussianLatentStdBins(
+        return substack(DiagGaussian_StdBins(
             post_mean, post_stdd, latent_prec, prior_prec), z_view)
     return BBANS(prior, likelihood, posterior)
 
