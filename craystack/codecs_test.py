@@ -318,3 +318,13 @@ def test_flatten_unflatten(shape, depth=1000):
         el, init_tail = init_tail
         el_, recon_tail = recon_tail
         assert el == el_
+
+def test_flatten_rate():
+    rng.seed(0)
+    init_size = 500000
+    head_size = 250000
+    head, tail = codecs.random_stack(init_size, (head_size, ))
+    tail_size = len(vrans.flatten((np.array([2 ** 31]), tail)))
+    tail_diff = init_size - tail_size
+    rate = tail_diff / head_size
+    assert abs(rate / ((5+31+15.5)/32) - 1) < 0.001
