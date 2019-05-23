@@ -2,7 +2,6 @@ import math
 from functools import partial
 
 from scipy.stats import norm
-
 from scipy.special import expit as sigmoid
 
 import numpy as np
@@ -52,9 +51,9 @@ def NonUniform(enc_statfun, dec_statfun, precision):
     For a number cf in the range [0, 2 ** precision), dec_statfun must return
     the symbol whose range cf lies in, which in the picture above is b.
     """
-    def append(message, symbol):
+    def push(message, symbol):
         start, freq = enc_statfun(symbol)
-        return vrans.append(message, start, freq, precision)
+        return vrans.push(message, start, freq, precision)
 
     def pop(message):
         cf, pop_fun = vrans.pop(message, precision)
@@ -62,7 +61,7 @@ def NonUniform(enc_statfun, dec_statfun, precision):
         start, freq = enc_statfun(symbol)
         assert np.all(start <= cf) and np.all(cf < start + freq)
         return pop_fun(start, freq), symbol
-    return append, pop
+    return push, pop
 
 def repeat(codec, n):
     """
@@ -71,11 +70,11 @@ def repeat(codec, n):
     Assumes that symbols is a Numpy array with symbols.shape[0] == n. Assume
     that the codec doesn't change the shape of the ANS stack head.
     """
-    append_, pop_ = codec
-    def append(message, symbols):
+    push_, pop_ = codec
+    def push(message, symbols):
         assert np.shape(symbols)[0] == n
         for symbol in reversed(symbols):
-            message = append_(message, symbol)
+            message = push_(message, symbol)
         return message
 
     def pop(message):
@@ -84,7 +83,7 @@ def repeat(codec, n):
             message, symbol = pop_(message)
             symbols.append(symbol)
         return message, np.asarray(symbols)
-    return append, pop
+    return push, pop
 
 def serial(codecs):
     """
@@ -93,9 +92,9 @@ def serial(codecs):
     Codecs and symbols can be any iterable.
     Codecs are allowed to change the shape of the ANS stack head.
     """
-    def append(message, symbols):
-        for (append, _), symbol in reversed(list(zip(codecs, symbols))):
-            message = append(message, symbol)
+    def push(message, symbols):
+        for (push, _), symbol in reversed(list(zip(codecs, symbols))):
+            message = push(message, symbol)
         return message
 
     def pop(message):
@@ -105,21 +104,28 @@ def serial(codecs):
             symbols.append(symbol)
         return message, symbols
 
-    return append, pop
+    return push, pop
 
 def substack(codec, view_fun):
-    append_, pop_ = codec
-    def append(message, data, *args, **kwargs):
+    """
+    Apply a codec on a subset of a message head.
+
+    view_fun should be a function: head -> subhead, for example
+    view_fun = lambda head: head[0]
+    to run the codec on only the first element of the head
+    """
+    push_, pop_ = codec
+    def push(message, data, *args, **kwargs):
         head, tail = message
         subhead, update = util.view_update(head, view_fun)
-        subhead, tail = append_((subhead, tail), data, *args, **kwargs)
+        subhead, tail = push_((subhead, tail), data, *args, **kwargs)
         return update(subhead), tail
     def pop(message, *args, **kwargs):
         head, tail = message
         subhead, update = util.view_update(head, view_fun)
         (subhead, tail), data = pop_((subhead, tail), *args, **kwargs)
         return (update(subhead), tail), data
-    return append, pop
+    return push, pop
 
 def parallel(codecs, view_funs):
     """
@@ -131,10 +137,10 @@ def parallel(codecs, view_funs):
     """
     codecs = [substack(codec, view_fun)
               for codec, view_fun in zip(codecs, view_funs)]
-    def append(message, symbols):
+    def push(message, symbols):
         assert len(symbols) == len(codecs)
-        for (append, _), symbol in reversed(list(zip(codecs, symbols))):
-            message = append(message, symbol)
+        for (push, _), symbol in reversed(list(zip(codecs, symbols))):
+            message = push(message, symbol)
         return message
     def pop(message):
         symbols = []
@@ -143,9 +149,10 @@ def parallel(codecs, view_funs):
             symbols.append(symbol)
         assert len(symbols) == len(codecs)
         return message, symbols
-    return append, pop
+    return push, pop
 
 def shape(message):
+    """Get the shape of the message head(s)"""
     head, _ = message
     def _shape(head):
         if type(head) is tuple:
@@ -183,15 +190,15 @@ def Benford64():
     with log(x) approximately uniformly distributed. Useful for coding
     vectorans stack heads.
     """
-    length_append, length_pop = Uniform(5)
-    x_lower_append, x_lower_pop = Uniform(31)
-    def append(message, x):
-        message = x_lower_append(message, x & ((1 << 31) - 1))
+    length_push, length_pop = Uniform(5)
+    x_lower_push, x_lower_pop = Uniform(31)
+    def push(message, x):
+        message = x_lower_push(message, x & ((1 << 31) - 1))
         x_len = np.uint64(np.log2(x))
         x = x & ((1 << x_len) - 1)  # Rm leading 1
-        x_higher_append, _ = Uniform(x_len - 31)
-        message = x_higher_append(message, x >> 31)
-        message = length_append(message, x_len - 31)
+        x_higher_push, _ = Uniform(x_len - 31)
+        message = x_higher_push(message, x >> 31)
+        message = length_push(message, x_len - 31)
         return message
 
     def pop(message):
@@ -201,70 +208,66 @@ def Benford64():
         message, x_higher = x_higher_pop(message)
         message, x_lower = x_lower_pop(message)
         return message, (1 << x_len) | (x_higher << 31) | x_lower
-    return append, pop
+    return push, pop
 Benford64 = Benford64()
 
-def flatten_benford(x):
-    return vrans.flatten(reshape_head(x, (1, )))
+def flatten(message):
+    """
+    Flatten a message head and tail into a 1d array. Use this when finished
+    coding to map to a message representation which can easily be saved to
+    disk.
 
-def unflatten_benford(arr, shape):
+    If the message head is non-scalar it will be efficiently flattened by
+    coding elements as if they were data.
+    """
+    return vrans.flatten(reshape_head(message, (1,)))
+
+def unflatten(arr, shape):
+    """
+    Unflatten a 1d array, into a vrans message with desired shape. This is the
+    inverse of flatten.
+    """
     return reshape_head(vrans.unflatten(arr, (1,)), shape)
 
-def _resize_head_1d_codecs(small, big):
-    sizes = []
-    half = big
-    while True:
-        sizes.append(half)
+def _fold_sizes(small, big):
+    sizes = [small]
+    while small != big:
+        small = 2 * small if 2 * small <= big else big
+        sizes.append(small)
+    return sizes
 
-        if small == half:
-            break
+_fold_codec = lambda diff: substack(Benford64, lambda head: head[:diff])
 
-        half = math.ceil(half / 2) if half >= 2 * small else small
+def _fold_codecs(sizes):
+    return [_fold_codec(diff) for diff in np.subtract(sizes[1:], sizes[:-1])]
 
-    sizes = np.array(list(reversed(sizes)))
-    smaller_sizes = sizes[:-1]
-    bigger_sizes = sizes[1:]
-    steps = bigger_sizes - smaller_sizes
-    view_funs = [partial(lambda h, s=s: h[:s]) for s in steps]
-    codecs = [substack(Benford64, view_fun) for view_fun in view_funs]
-    return list(zip(codecs, smaller_sizes))
-
-def _reshape_head_1d(message, size):
+def _resize_head_1d(message, size):
     head, tail = message
-    if size == head.shape[0]:
-        return message
-    should_reduce = size < head.shape[0]
-    return (_reduce_head_1d if should_reduce else _grow_head_1d)(message, size)
-
-def _reduce_head_1d(message, size):
-    head, tail = message
-
-    for (append, _), new_size in reversed(_resize_head_1d_codecs(small=size, big=head.shape[0])):
-        head, tail = message
-        message = head[:new_size], tail
-        message = append(message, head[new_size:])
-
-    return message
-
-def _grow_head_1d(message, size):
-    head, tail = message
-    for (_, pop), _ in _resize_head_1d_codecs(small=head.shape[0], big=size):
-        message, head_extension = pop(message)
-        head, tail = message
-        message = np.concatenate([head, head_extension]), tail
-
-    return message
+    sizes = _fold_sizes(*sorted((size, np.size(head))))
+    codecs = _fold_codecs(sizes)
+    if size < np.size(head):
+        for (push, _), new_size in reversed(list(zip(codecs, sizes[:-1]))):
+            head, tail = push((head[:new_size], tail), head[new_size:])
+    elif size > np.size(head):
+        for _, pop in codecs:
+            (head, tail), head_ex = pop((head, tail))
+            head = np.concatenate([head, head_ex])
+    return head, tail
 
 def reshape_head(message, shape):
+    """
+    Reshape the head of a message. Note that growing the head uses up
+    information from the message and will fail if the message is empty.
+    """
     head, tail = message
     message = (np.ravel(head), tail)
-    head, tail = _reshape_head_1d(message, size=np.prod(shape))
+    head, tail = _resize_head_1d(message, size=np.prod(shape))
     return np.reshape(head, shape), tail
 
 def random_stack(flat_len, shape, rng=np.random):
     """Generate a random vrans stack"""
     arr = rng.randint(1 << 32, size=flat_len, dtype='uint32')
-    return unflatten_benford(arr, shape)
+    return unflatten(arr, shape)
 
 def _ensure_nonzero_freq_bernoulli(p, precision):
     p[p == 0] += 1
@@ -288,6 +291,7 @@ def _bernoulli_ppf(p, precision, safe=True):
     return lambda cf: np.uint64((cf + 0.5) > onemp)
 
 def Bernoulli(p, prec):
+    """Codec for Bernoulli distributed data"""
     enc_statfun = _cdf_to_enc_statfun(_bernoulli_cdf(p, prec))
     dec_statfun = _bernoulli_ppf(p, prec)
     return NonUniform(enc_statfun, dec_statfun, prec)
@@ -327,15 +331,18 @@ def _ppf_from_cumulative_buckets(c_buckets):
     return ppf
 
 def Categorical(p, prec):
-    """Assume that the last dim of p contains the probability vectors,
-    i.e. np.sum(p, axis=-1) == ones"""
+    """
+    Codec for categorical distributed data.
+    Assume that the last dim of p contains the probability vectors,
+    i.e. np.sum(p, axis=-1) == ones
+    """
     cumulative_buckets = _cumulative_buckets_from_probs(p, prec)
     enc_statfun = _cdf_to_enc_statfun(_cdf_from_cumulative_buckets(cumulative_buckets))
     dec_statfun = _ppf_from_cumulative_buckets(cumulative_buckets)
     return NonUniform(enc_statfun, dec_statfun, prec)
 
-def _create_logistic_buckets(means, log_scale, coding_prec, bin_prec):
-    buckets = np.linspace(-0.5, 0.5, (1 << bin_prec)+1)
+def _create_logistic_buckets(means, log_scale, coding_prec, bin_prec, bin_lb, bin_ub):
+    buckets = np.linspace(bin_lb, bin_ub, (1 << bin_prec)+1)
     buckets = np.broadcast_to(buckets, means.shape + ((1 << bin_prec)+1,))
     inv_stdv = np.exp(-log_scale)
     cdfs = inv_stdv * (buckets - means[..., np.newaxis])
@@ -367,9 +374,17 @@ def _logistic_ppf(means, log_scale, coding_prec, bin_prec):
         return np.uint64(np.digitize(x, bins) - 1)
     return ppf
 
-def Logistic(mean, log_scale, coding_prec, bin_prec, no_zero_freqs=True, log_scale_min=-6):
+def Logistic_UnifBins(mean, log_scale, coding_prec, bin_prec, bin_lb, bin_ub,
+             no_zero_freqs=True, log_scale_min=-6):
+    """
+    Codec for logistic distributed data.
+
+    The discretization is assumed to be uniform between bin_lb and bin_ub.
+    no_zero_freqs=True will rebalance buckets, but is slower.
+    """
     if no_zero_freqs:
-        cumulative_buckets = _create_logistic_buckets(mean, log_scale, coding_prec, bin_prec)
+        cumulative_buckets = _create_logistic_buckets(mean, log_scale, coding_prec, bin_prec,
+                                                      bin_lb, bin_ub)
         enc_statfun = _cdf_to_enc_statfun(_cdf_from_cumulative_buckets(cumulative_buckets))
         dec_statfun = _ppf_from_cumulative_buckets(cumulative_buckets)
     else:
@@ -378,9 +393,10 @@ def Logistic(mean, log_scale, coding_prec, bin_prec, no_zero_freqs=True, log_sca
         dec_statfun = _logistic_ppf(mean, log_scale, coding_prec, bin_prec)
     return NonUniform(enc_statfun, dec_statfun, coding_prec)
 
-def _create_logistic_mixture_buckets(means, log_scales, logit_probs, coding_prec, bin_prec):
+def _create_logistic_mixture_buckets(means, log_scales, logit_probs, coding_prec, bin_prec,
+                                     bin_lb, bin_ub):
     inv_stdv = np.exp(-log_scales)
-    buckets = np.linspace(-1, 1, (1 << bin_prec)+1)
+    buckets = np.linspace(bin_lb, bin_ub, (1 << bin_prec)+1)
     buckets = np.broadcast_to(buckets, means.shape + ((1 << bin_prec)+1,))
     cdfs = inv_stdv[..., np.newaxis] * (buckets - means[..., np.newaxis])
     cdfs[..., 0] = -np.inf
@@ -391,11 +407,15 @@ def _create_logistic_mixture_buckets(means, log_scales, logit_probs, coding_prec
     probs = np.sum(prob_cpts * mixture_probs[..., np.newaxis], axis=1)
     return _cumulative_buckets_from_probs(probs, coding_prec)
 
-def LogisticMixture(theta, coding_prec, bin_prec=8):
-    """theta: means, log_scales, logit_probs"""
-    means, log_scales, logit_probs = np.split(theta, 3, axis=-1)
-    cumulative_buckets = _create_logistic_mixture_buckets(means, log_scales,
-                                                          logit_probs, coding_prec, bin_prec)
+def LogisticMixture_UnifBins(means, log_scales, logit_probs, coding_prec, bin_prec, bin_lb, bin_ub):
+    """
+    Codec for data from a mixture of logistic distributions.
+
+    The discretization is assumed to be uniform between bin_lb and bin_ub.
+    logit_probs are the mixture weights as logits.
+    """
+    cumulative_buckets = _create_logistic_mixture_buckets(means, log_scales, logit_probs,
+                                                          coding_prec, bin_prec, bin_lb, bin_ub)
     enc_statfun = _cdf_to_enc_statfun(_cdf_from_cumulative_buckets(cumulative_buckets))
     dec_statfun = _ppf_from_cumulative_buckets(cumulative_buckets)
     return NonUniform(enc_statfun, dec_statfun, coding_prec)
@@ -405,7 +425,7 @@ std_gaussian_centres_cache = {}  # Stores bucket centres
 
 def std_gaussian_buckets(precision):
     """
-    Return the endpoints of buckets partioning the domain of the prior. Each
+    Return the endpoints of buckets partitioning the domain of the prior. Each
     bucket has mass 1 / (1 << precision) under the prior.
     """
     if precision in std_gaussian_bucket_cache:
@@ -417,7 +437,7 @@ def std_gaussian_buckets(precision):
 
 def std_gaussian_centres(precision):
     """
-    Return the centres of mass of buckets partioning the domain of the prior.
+    Return the centres of mass of buckets partitioning the domain of the prior.
     Each bucket has mass 1 / (1 << precision) under the prior.
     """
     if precision in std_gaussian_centres_cache:
@@ -428,13 +448,13 @@ def std_gaussian_centres(precision):
         std_gaussian_centres_cache[precision] = centres
         return centres
 
-def _gaussian_latent_cdf(mean, stdd, prior_prec, post_prec):
+def _gaussian_cdf(mean, stdd, prior_prec, post_prec):
     def cdf(idx):
         x = std_gaussian_buckets(prior_prec)[idx]
         return _nearest_int(norm.cdf(x, mean, stdd) * (1 << post_prec))
     return cdf
 
-def _gaussian_latent_ppf(mean, stdd, prior_prec, post_prec):
+def _gaussian_ppf(mean, stdd, prior_prec, post_prec):
     def ppf(cf):
         x = norm.ppf((cf + 0.5) / (1 << post_prec), mean, stdd)
         # Binary search is faster than using the actual gaussian cdf for the
@@ -443,15 +463,21 @@ def _gaussian_latent_ppf(mean, stdd, prior_prec, post_prec):
         return np.uint64(np.digitize(x, std_gaussian_buckets(prior_prec)) - 1)
     return ppf
 
-def DiagGaussianLatentStdBins(mean, stdd, coding_prec, bin_prec):
+def DiagGaussian_StdBins(mean, stdd, coding_prec, bin_prec):
+    """
+    Codec for data from a diagonal Gaussian with bins that have equal mass under
+    a standard (0, I) Gaussian
+    """
     enc_statfun = _cdf_to_enc_statfun(
-        _gaussian_latent_cdf(mean, stdd, bin_prec, coding_prec))
-    dec_statfun = _gaussian_latent_ppf(mean, stdd, bin_prec, coding_prec)
+        _gaussian_cdf(mean, stdd, bin_prec, coding_prec))
+    dec_statfun = _gaussian_ppf(mean, stdd, bin_prec, coding_prec)
     return NonUniform(enc_statfun, dec_statfun, coding_prec)
 
-def DiagGaussianLatent(mean, stdd, bin_mean, bin_stdd, coding_prec, bin_prec):
-    """To code Gaussian data according to the bins of a different Gaussian"""
-
+def DiagGaussian_GaussianBins(mean, stdd, bin_mean, bin_stdd, coding_prec, bin_prec):
+    """
+    Codec for data from a diagonal Gaussian with bins that have equal mass under
+    a different diagonal Gaussian
+    """
     def cdf(idx):
         x = norm.ppf(idx / (1 << bin_prec), bin_mean, bin_stdd)  # this gives lb of bin
         return _nearest_int(norm.cdf(x, mean, stdd) * (1 << coding_prec))
@@ -466,8 +492,11 @@ def DiagGaussianLatent(mean, stdd, bin_mean, bin_stdd, coding_prec, bin_prec):
     enc_statfun = _cdf_to_enc_statfun(cdf)
     return NonUniform(enc_statfun, ppf, coding_prec)
 
-def DiagGaussianLatentUnifBins(mean, stdd, bin_min, bin_max, coding_prec, n_bins,
-                               rebalanced=True):
+def DiagGaussian_UnifBins(mean, stdd, bin_min, bin_max, coding_prec, n_bins, rebalanced=True):
+    """
+    Codec for data from a diagonal Gaussian with uniform bins.
+    rebalanced=True will ensure no zero frequencies, but is slower.
+    """
     if rebalanced:
         bins = np.linspace(bin_min, bin_max, n_bins)
         bins = np.broadcast_to(np.moveaxis(bins, 0, -1), mean.shape + (n_bins,))
@@ -491,24 +520,38 @@ def DiagGaussianLatentUnifBins(mean, stdd, bin_min, bin_max, coding_prec, n_bins
         dec_statfun = ppf
     return NonUniform(enc_statfun, dec_statfun, coding_prec)
 
-def AutoRegressive(elem_param_fn, data_shape, params_shape, elem_idxs, elem_codec):
-    def append(message, data, all_params=None):
+def AutoRegressive(param_fn, data_shape, params_shape, elem_idxs, elem_codec):
+    """
+    Codec for data from distributions which are calculated autoregressively.
+    That is, the data can be partitioned into n elements such that the
+    distribution/codec for an element is only known when all previous
+    elements are known. This is does not affect the push step, but does
+    affect the pop step, which must be done in sequence (so is slower).
+
+    elem_param_fn maps data to the params for the respective codecs.
+    elem_idxs defines the ordering over elements within data.
+
+    We assume that the indices within elem_idxs can also be used to index
+    the params from elem_param_fn. These indexed params are then used in
+    the elem_codec to actually code each element.
+    """
+    def push(message, data, all_params=None):
         if not all_params:
-            all_params = elem_param_fn(data)
+            all_params = param_fn(data)
         for idx in reversed(elem_idxs):
             elem_params = all_params[idx]
-            elem_append, _ = elem_codec(elem_params, idx)
-            message = elem_append(message, data[idx].astype('uint64'))
+            elem_push, _ = elem_codec(elem_params, idx)
+            message = elem_push(message, data[idx].astype('uint64'))
         return message
 
     def pop(message):
         data = np.zeros(data_shape, dtype=np.uint64)
         all_params = np.zeros(params_shape, dtype=np.float32)
         for idx in elem_idxs:
-            all_params = elem_param_fn(data, all_params, idx)
+            all_params = param_fn(data, all_params, idx)
             elem_params = all_params[idx]
             _, elem_pop = elem_codec(elem_params, idx)
             message, elem = elem_pop(message)
             data[idx] = elem
         return message, data
-    return append, pop
+    return push, pop

@@ -8,9 +8,9 @@ import craystack.vectorans as vrans
 
 
 def check_codec(head_shape, codec, data):
-    message = vrans.x_init(head_shape)
-    append, pop = codec
-    message_ = append(message, data)
+    message = vrans.message_init(head_shape)
+    push, pop = codec
+    message_ = push(message, data)
     message_, data_ = pop(message_)
     assert_message_equal(message, message_)
     np.testing.assert_equal(data, data_)
@@ -50,7 +50,7 @@ def test_repeat():
 def test_substack():
     n_data = 100
     prec = 4
-    head, tail = vrans.x_init((4, 4))
+    head, tail = vrans.message_init((4, 4))
     head = np.split(head, 2)
     message = head, tail
     data = rng.randint(1 << prec, size=(n_data, 2, 4), dtype='uint64')
@@ -95,12 +95,12 @@ def test_serial_resized(shape2, shape1=(5, ), precision=4):
     data = list(data1) + list(data2)
 
     codec = codecs.Uniform(precision)
-    append, pop = codec
+    push, pop = codec
 
-    def append_resize(message, symbol):
+    def push_resize(message, symbol):
         assert message[0].shape == shape2
         message = codecs.reshape_head(message, shape1)
-        message = append(message, symbol)
+        message = push(message, symbol)
         return message
 
     def pop_resize(message):
@@ -109,7 +109,7 @@ def test_serial_resized(shape2, shape1=(5, ), precision=4):
         message = codecs.reshape_head(message, shape2)
         return message, symbol
 
-    resize_codec = (append_resize, pop_resize)
+    resize_codec = (push_resize, pop_resize)
 
     check_codec(shape2, cs.serial([codec for _ in data1[:-1]] +
                                   [resize_codec] +
@@ -142,8 +142,9 @@ def test_logistic():
     log_scale = rng.randn()
     # type is important!
     data = np.array([rng.choice(256) for _ in range(batch_size)]).astype('uint64')
-    check_codec((batch_size,), codecs.Logistic(means, log_scale,
-                                               coding_precision, bin_precision),
+    check_codec((batch_size,), codecs.Logistic_UnifBins(means, log_scale,
+                                                        coding_precision, bin_precision,
+                                                        bin_lb=-0.5, bin_ub=0.5),
                 data)
 
 
@@ -155,10 +156,10 @@ def test_logistic_mixture():
     means, log_scales, logit_probs = rng.randn(*shape), rng.randn(*shape), rng.randn(*shape)
     means = means + 100
     log_scales = log_scales - 10
-    theta = np.concatenate((means, log_scales, logit_probs), axis=-1)
     # type is important!
     data = np.array([rng.choice(256) for _ in range(batch_size)]).astype('uint64')
-    check_codec((shape[0],), codecs.LogisticMixture(theta, precision), data)
+    check_codec((shape[0],), codecs.LogisticMixture_UnifBins(means, log_scales, logit_probs,
+                                                             precision, bin_prec=8, bin_lb=-1., bin_ub=1.), data)
 
 
 def test_autoregressive():
@@ -197,7 +198,7 @@ def test_gaussian_db():
     data = np.array([rng.choice(1 << bin_precision) for _ in range(batch_size)])
 
     check_codec((batch_size,),
-                codecs.DiagGaussianLatent(means, stdds, bin_means, bin_stdds,
+                codecs.DiagGaussian_GaussianBins(means, stdds, bin_means, bin_stdds,
                                           coding_precision, bin_precision),
                 data)
 
@@ -214,26 +215,26 @@ def test_gaussian_ub():
     data = np.array([rng.choice(n_bins, 2) for _ in range(batch_size)])
 
     check_codec((batch_size, 2),
-                codecs.DiagGaussianLatentUnifBins(means, stdds, bin_lb, bin_ub,
+                codecs.DiagGaussian_UnifBins(means, stdds, bin_lb, bin_ub,
                                                   coding_precision, n_bins),
                 data)
 
-def test_flatten_unflatten_benford():
+def test_flatten_unflatten():
     n = 100
     shape = (7, 3)
     p = 12
-    state = vrans.x_init(shape)
+    state = vrans.message_init(shape)
     some_bits = rng.randint(1 << p, size=(n,) + shape).astype(np.uint64)
     freqs = np.ones(shape, dtype="uint64")
     for b in some_bits:
-        state = vrans.append(state, b, freqs, p)
-    flat = codecs.flatten_benford(state)
+        state = vrans.push(state, b, freqs, p)
+    flat = codecs.flatten(state)
     flat_ = vrans.flatten(state)
     print('Normal flat len: {}'.format(len(flat_) * 32))
     print('Benford flat len: {}'.format(len(flat) * 32))
     assert flat.dtype is np.dtype("uint32")
-    state_ = codecs.unflatten_benford(flat, shape)
-    flat_ = codecs.flatten_benford(state_)
+    state_ = codecs.unflatten(flat, shape)
+    flat_ = codecs.flatten(state_)
     assert np.all(flat == flat_)
     assert np.all(state[0] == state_[0])
     assert state[1] == state_[1]
@@ -245,21 +246,21 @@ def assert_message_equal(message1, message2):
 
 @pytest.mark.parametrize('old_size', [141, 32, 17, 6, 3])
 @pytest.mark.parametrize('new_size', [141, 32, 17, 6, 3])
-def test_reshape_head_1d(old_size, new_size, depth=1000):
+def test_resize_head_1d(old_size, new_size, depth=1000):
     old_shape = (old_size,)
 
     np.random.seed(0)
     p = 8
     bits = np.random.randint(1 << p, size=(depth,) + old_shape, dtype=np.uint64)
 
-    message = vrans.x_init(old_shape)
+    message = vrans.message_init(old_shape)
 
-    other_bits_append, _ = cs.repeat(codecs.Uniform(p), depth)
+    other_bits_push, _ = cs.repeat(codecs.Uniform(p), depth)
 
-    message = other_bits_append(message, bits)
+    message = other_bits_push(message, bits)
 
-    resized = codecs._reshape_head_1d(message, new_size)
-    reconstructed = codecs._reshape_head_1d(resized, old_size)
+    resized = codecs._resize_head_1d(message, new_size)
+    reconstructed = codecs._resize_head_1d(resized, old_size)
 
     init_head, init_tail = message
     recon_head, recon_tail = reconstructed
@@ -277,11 +278,11 @@ def test_reshape_head(old_shape, new_shape, depth=1000):
     p = 8
     bits = np.random.randint(1 << p, size=(depth,) + old_shape, dtype=np.uint64)
 
-    message = vrans.x_init(old_shape)
+    message = vrans.message_init(old_shape)
 
-    other_bits_append, _ = cs.repeat(codecs.Uniform(p), depth)
+    other_bits_push, _ = cs.repeat(codecs.Uniform(p), depth)
 
-    message = other_bits_append(message, bits)
+    message = other_bits_push(message, bits)
 
     resized = codecs.reshape_head(message, new_shape)
     reconstructed = codecs.reshape_head(resized, old_shape)
@@ -296,19 +297,19 @@ def test_reshape_head(old_shape, new_shape, depth=1000):
 
 
 @pytest.mark.parametrize('shape', [(100,), (1, 23), (2, 4, 5)])
-def test_flatten_unflatten_benford(shape, depth=1000):
+def test_flatten_unflatten(shape, depth=1000):
     np.random.seed(0)
     p = 8
     bits = np.random.randint(1 << p, size=(depth,) + shape, dtype=np.uint64)
 
-    message = vrans.x_init(shape)
+    message = vrans.message_init(shape)
 
-    other_bits_append, _ = cs.repeat(codecs.Uniform(p), depth)
+    other_bits_push, _ = cs.repeat(codecs.Uniform(p), depth)
 
-    message = other_bits_append(message, bits)
+    message = other_bits_push(message, bits)
 
-    flattened = codecs.flatten_benford(message)
-    reconstructed = codecs.unflatten_benford(flattened, shape)
+    flattened = codecs.flatten(message)
+    reconstructed = codecs.unflatten(flattened, shape)
 
     init_head, init_tail = message
     recon_head, recon_tail = reconstructed

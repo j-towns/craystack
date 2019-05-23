@@ -1,5 +1,5 @@
 from craystack.codecs import substack, Uniform, \
-    std_gaussian_centres, DiagGaussianLatentStdBins
+    std_gaussian_centres, DiagGaussian_StdBins
 
 
 def BBANS(prior, likelihood, posterior):
@@ -17,24 +17,24 @@ def BBANS(prior, likelihood, posterior):
     variable. The model has a prior p(z), likelihood p(x | z) and (possibly
     approximate) posterior q(z | x). See the paper for more details.
     """
-    prior_append, prior_pop = prior
+    prior_push, prior_pop = prior
 
-    def append(message, data):
+    def push(message, data):
         _, posterior_pop = posterior(data)
         message, latent = posterior_pop(message)
-        likelihood_append, _ = likelihood(latent)
-        message = likelihood_append(message, data)
-        message = prior_append(message, latent)
+        likelihood_push, _ = likelihood(latent)
+        message = likelihood_push(message, data)
+        message = prior_push(message, latent)
         return message
 
     def pop(message):
         message, latent = prior_pop(message)
         _, likelihood_pop = likelihood(latent)
         message, data = likelihood_pop(message)
-        posterior_append, _ = posterior(data)
-        message = posterior_append(message, latent)
+        posterior_push, _ = posterior(data)
+        message = posterior_push(message, latent)
         return message, data
-    return append, pop
+    return push, pop
 
 def VAE(gen_net, rec_net, obs_codec, prior_prec, latent_prec):
     """
@@ -54,7 +54,7 @@ def VAE(gen_net, rec_net, obs_codec, prior_prec, latent_prec):
 
     def posterior(data):
         post_mean, post_stdd = rec_net(data)
-        return substack(DiagGaussianLatentStdBins(
+        return substack(DiagGaussian_StdBins(
             post_mean, post_stdd, latent_prec, prior_prec), z_view)
     return BBANS(prior, likelihood, posterior)
 

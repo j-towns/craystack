@@ -3,7 +3,10 @@ import numpy as np
 
 rans_l = 1 << 31  # the lower bound of the normalisation interval
 
-def x_init(shape):
+def message_init(shape):
+    """
+    Returns an empty ANS message of given shape.
+    """
     return (np.full(shape, rans_l, "uint64"), ())
 
 def cons_list_extend(ls, els):
@@ -21,7 +24,7 @@ def cons_list_slice(ls, n):
         n -= 1
     return ls, np.asarray(slc)
 
-def append(x, starts, freqs, precisions):
+def push(x, starts, freqs, precisions):
     head, tail = x
     # assert head.shape == starts.shape == freqs.shape
     idxs = head >= ((rans_l >> precisions) << 32) * freqs

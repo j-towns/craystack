@@ -9,7 +9,7 @@ def test_vectorans():
     precision = 8
     n_data = 1000
 
-    x = vrans.x_init(shape)
+    x = vrans.message_init(shape)
     starts = rng.randint(0, 256, size=(n_data,) + shape).astype("uint64")
     freqs = (rng.randint(1, 256, size=(n_data,) + shape).astype("uint64")
              % (256 - starts))
@@ -18,7 +18,7 @@ def test_vectorans():
     print("Exact entropy: " + str(np.sum(np.log2(256 / freqs))) + " bits.")
     # Encode
     for start, freq in zip(starts, freqs):
-        x = vrans.append(x, start, freq, precision)
+        x = vrans.push(x, start, freq, precision)
     coded_arr = vrans.flatten(x)
     assert coded_arr.dtype == np.uint32
     print("Actual output shape: " + str(32 * len(coded_arr)) + " bits.")
@@ -29,18 +29,18 @@ def test_vectorans():
         cf, pop = vrans.pop(x, precision)
         assert np.all(start <= cf) and np.all(cf < start + freq)
         x = pop(start, freq)
-    assert np.all(x[0] == vrans.x_init(shape)[0])
+    assert np.all(x[0] == vrans.message_init(shape)[0])
 
 
 def test_flatten_unflatten():
     n = 100
     shape = (7, 3)
     prec = 12
-    state = vrans.x_init(shape)
+    state = vrans.message_init(shape)
     some_bits = rng.randint(1 << prec, size=(n,) + shape).astype(np.uint64)
     freqs = np.ones(shape, dtype="uint64")
     for b in some_bits:
-        state = vrans.append(state, b, freqs, prec)
+        state = vrans.push(state, b, freqs, prec)
     flat = vrans.flatten(state)
     assert flat.dtype is np.dtype("uint32")
     state_ = vrans.unflatten(flat, shape)
