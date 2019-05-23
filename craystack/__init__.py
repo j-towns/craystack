@@ -1,2 +1,2 @@
 from craystack.codecs import *
-from craystack.vectorans import message_init
+from craystack.vectorans import empty_message

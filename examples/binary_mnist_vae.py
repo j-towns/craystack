@@ -56,7 +56,7 @@ images = np.split(np.reshape(images, (num_images, -1)), num_batches)
 ## Encode
 # Initialize message with some 'extra' bits
 encode_t0 = time.time()
-init_message = cs.message_init(obs_size + latent_size)
+init_message = cs.empty_message(obs_size + latent_size)
 
 # Enough bits to pop a single latent
 other_bits = rng.randint(1 << q_precision, size=latent_shape, dtype=np.uint64)

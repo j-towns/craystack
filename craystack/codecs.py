@@ -264,8 +264,8 @@ def reshape_head(message, shape):
     head, tail = _resize_head_1d(message, size=np.prod(shape))
     return np.reshape(head, shape), tail
 
-def random_stack(flat_len, shape, rng=np.random):
-    """Generate a random vrans stack"""
+def random_message(flat_len, shape, rng=np.random):
+    """Generate a random vrans stack."""
     arr = rng.randint(1 << 32, size=flat_len, dtype='uint32')
     return unflatten(arr, shape)
 

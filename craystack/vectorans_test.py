@@ -9,7 +9,7 @@ def test_vectorans():
     precision = 8
     n_data = 1000
 
-    x = vrans.message_init(shape)
+    x = vrans.empty_message(shape)
     starts = rng.randint(0, 256, size=(n_data,) + shape).astype("uint64")
     freqs = (rng.randint(1, 256, size=(n_data,) + shape).astype("uint64")
              % (256 - starts))
@@ -29,14 +29,14 @@ def test_vectorans():
         cf, pop = vrans.pop(x, precision)
         assert np.all(start <= cf) and np.all(cf < start + freq)
         x = pop(start, freq)
-    assert np.all(x[0] == vrans.message_init(shape)[0])
+    assert np.all(x[0] == vrans.empty_message(shape)[0])
 
 
 def test_flatten_unflatten():
     n = 100
     shape = (7, 3)
     prec = 12
-    state = vrans.message_init(shape)
+    state = vrans.empty_message(shape)
     some_bits = rng.randint(1 << prec, size=(n,) + shape).astype(np.uint64)
     freqs = np.ones(shape, dtype="uint64")
     for b in some_bits:

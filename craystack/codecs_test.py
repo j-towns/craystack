@@ -8,7 +8,7 @@ import craystack.vectorans as vrans
 
 
 def check_codec(head_shape, codec, data):
-    message = vrans.message_init(head_shape)
+    message = vrans.empty_message(head_shape)
     push, pop = codec
     message_ = push(message, data)
     message_, data_ = pop(message_)
@@ -50,7 +50,7 @@ def test_repeat():
 def test_substack():
     n_data = 100
     prec = 4
-    head, tail = vrans.message_init((4, 4))
+    head, tail = vrans.empty_message((4, 4))
     head = np.split(head, 2)
     message = head, tail
     data = rng.randint(1 << prec, size=(n_data, 2, 4), dtype='uint64')
@@ -223,7 +223,7 @@ def test_flatten_unflatten():
     n = 100
     shape = (7, 3)
     p = 12
-    state = vrans.message_init(shape)
+    state = vrans.empty_message(shape)
     some_bits = rng.randint(1 << p, size=(n,) + shape).astype(np.uint64)
     freqs = np.ones(shape, dtype="uint64")
     for b in some_bits:
@@ -253,7 +253,7 @@ def test_resize_head_1d(old_size, new_size, depth=1000):
     p = 8
     bits = np.random.randint(1 << p, size=(depth,) + old_shape, dtype=np.uint64)
 
-    message = vrans.message_init(old_shape)
+    message = vrans.empty_message(old_shape)
 
     other_bits_push, _ = cs.repeat(codecs.Uniform(p), depth)
 
@@ -278,7 +278,7 @@ def test_reshape_head(old_shape, new_shape, depth=1000):
     p = 8
     bits = np.random.randint(1 << p, size=(depth,) + old_shape, dtype=np.uint64)
 
-    message = vrans.message_init(old_shape)
+    message = vrans.empty_message(old_shape)
 
     other_bits_push, _ = cs.repeat(codecs.Uniform(p), depth)
 
@@ -302,7 +302,7 @@ def test_flatten_unflatten(shape, depth=1000):
     p = 8
     bits = np.random.randint(1 << p, size=(depth,) + shape, dtype=np.uint64)
 
-    message = vrans.message_init(shape)
+    message = vrans.empty_message(shape)
 
     other_bits_push, _ = cs.repeat(codecs.Uniform(p), depth)
 
@@ -319,11 +319,12 @@ def test_flatten_unflatten(shape, depth=1000):
         el_, recon_tail = recon_tail
         assert el == el_
 
+
 def test_flatten_rate():
     rng.seed(0)
     init_size = 500000
     head_size = 250000
-    head, tail = codecs.random_stack(init_size, (head_size, ))
+    head, tail = codecs.random_message(init_size, (head_size,))
     tail_size = len(vrans.flatten((np.array([2 ** 31]), tail)))
     tail_diff = init_size - tail_size
     rate = tail_diff / head_size
