@@ -1,13 +1,14 @@
 import math
-from functools import partial
+from collections import namedtuple
 
 from scipy.stats import norm
 from scipy.special import expit as sigmoid
 
 import numpy as np
-import craystack.vectorans as vrans
+import craystack.rans as vrans
 import craystack.util as util
 
+Codec = namedtuple('Codec', ['push', 'pop'])
 
 def NonUniform(enc_statfun, dec_statfun, precision):
     """
@@ -61,7 +62,7 @@ def NonUniform(enc_statfun, dec_statfun, precision):
         start, freq = enc_statfun(symbol)
         assert np.all(start <= cf) and np.all(cf < start + freq)
         return pop_fun(start, freq), symbol
-    return push, pop
+    return Codec(push, pop)
 
 def repeat(codec, n):
     """
@@ -83,7 +84,7 @@ def repeat(codec, n):
             message, symbol = pop_(message)
             symbols.append(symbol)
         return message, np.asarray(symbols)
-    return push, pop
+    return Codec(push, pop)
 
 def serial(codecs):
     """
@@ -93,18 +94,18 @@ def serial(codecs):
     Codecs are allowed to change the shape of the ANS stack head.
     """
     def push(message, symbols):
-        for (push, _), symbol in reversed(list(zip(codecs, symbols))):
-            message = push(message, symbol)
+        for codec, symbol in reversed(list(zip(codecs, symbols))):
+            message = codec.push(message, symbol)
         return message
 
     def pop(message):
         symbols = []
-        for _, pop in codecs:
-            message, symbol = pop(message)
+        for codec in codecs:
+            message, symbol = codec.pop(message)
             symbols.append(symbol)
         return message, symbols
 
-    return push, pop
+    return Codec(push, pop)
 
 def substack(codec, view_fun):
     """
@@ -125,7 +126,7 @@ def substack(codec, view_fun):
         subhead, update = util.view_update(head, view_fun)
         (subhead, tail), data = pop_((subhead, tail), *args, **kwargs)
         return (update(subhead), tail), data
-    return push, pop
+    return Codec(push, pop)
 
 def parallel(codecs, view_funs):
     """
@@ -149,7 +150,7 @@ def parallel(codecs, view_funs):
             symbols.append(symbol)
         assert len(symbols) == len(codecs)
         return message, symbols
-    return push, pop
+    return Codec(push, pop)
 
 def shape(message):
     """Get the shape of the message head(s)"""
@@ -208,7 +209,7 @@ def Benford64():
         message, x_higher = x_higher_pop(message)
         message, x_lower = x_lower_pop(message)
         return message, (1 << x_len) | (x_higher << 31) | x_lower
-    return push, pop
+    return Codec(push, pop)
 Benford64 = Benford64()
 
 def flatten(message):
@@ -554,4 +555,4 @@ def AutoRegressive(param_fn, data_shape, params_shape, elem_idxs, elem_codec):
             message, elem = elem_pop(message)
             data[idx] = elem
         return message, data
-    return push, pop
+    return Codec(push, pop)

@@ -1,3 +1,7 @@
+"""
+Vectorized implementation of rANS based on https://arxiv.org/abs/1402.3392
+"""
+
 import numpy as np
 
 
