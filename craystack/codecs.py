@@ -357,7 +357,7 @@ def _logistic_cdf(means, log_scale, coding_prec, bin_prec):
     inv_stdv = np.exp(-log_scale)
     def cdf(idx):
         # can reduce mem footprint
-        buckets = np.linspace(-0.5, 0.5, (1 << bin_prec)+1)
+        buckets = np.linspace(-0.5, 0.5, (1 << bin_prec) + 1)
         buckets = np.append(buckets, np.inf)
         bucket_ub = buckets[idx+1]
         scaled = inv_stdv * (bucket_ub - means)
@@ -393,6 +393,26 @@ def Logistic_UnifBins(mean, log_scale, coding_prec, bin_prec, bin_lb, bin_ub,
         enc_statfun = _cdf_to_enc_statfun(_logistic_cdf(mean, log_scale, coding_prec, bin_prec))
         dec_statfun = _logistic_ppf(mean, log_scale, coding_prec, bin_prec)
     return NonUniform(enc_statfun, dec_statfun, coding_prec)
+
+def _discretize(cdf, ppf, low, high, bin_prec, coding_prec):
+    """
+    Utility function for forming a codec given a (continuous) cdf and its
+    inverse. Assumes that
+
+        grad(cdf) >= 2 ** (bin_prec - coding_prec)
+
+    so that all intervals end up with non-zero mass.
+    """
+    def cdf_(idx):
+        x_low = low + (high - low) * idx / (1 << bin_prec)
+        return np.where(
+            idx >= 0, _nearest_int((1 << coding_prec) * cdf(x_low)), 0)
+    enc_statfun = _cdf_to_enc_statfun(cdf_)
+    def ppf_(cf):
+        x_max = ppf((cf + .5) / (1 << coding_prec))
+        return np.uint64(
+            np.floor((1 << bin_prec) * (x_max - low) / (high - low)))
+    return NonUniform(enc_statfun, ppf_, coding_prec)
 
 def _create_logistic_mixture_buckets(means, log_scales, logit_probs, coding_prec, bin_prec,
                                      bin_lb, bin_ub):

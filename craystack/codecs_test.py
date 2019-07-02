@@ -1,5 +1,6 @@
 import numpy as np
 import numpy.random as rng
+from scipy.special import expit, logit
 import pytest
 
 import craystack as cs
@@ -145,6 +146,15 @@ def test_logistic():
                                                         bin_lb=-0.5, bin_ub=0.5),
                 data)
 
+def test_discretized():
+    rng = np.random.RandomState()
+    coding_prec = 16
+    bin_prec = 8
+    n = 10000
+    data = rng.randint(1 << bin_prec, size=10000)
+    check_codec((n,),
+                cs.codecs._discretize(expit, logit, -.5, .5, bin_prec, coding_prec),
+                data)
 
 def test_logistic_mixture():
     precision = 12
