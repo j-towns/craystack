@@ -426,15 +426,14 @@ def Logistic_UnifBinsFast(
     bin_range = bin_ub - bin_lb
     def cdf(x):
         cdf_min = (x - bin_lb) / bin_range * 2 ** (bin_prec - coding_prec)
-        cdf_max = ((1 << coding_prec)
-                   + (x - bin_ub) / bin_range * 2 ** (bin_prec - coding_prec))
+        cdf_max = 1 + (x - bin_ub) / bin_range * 2 ** (bin_prec - coding_prec)
         return np.clip(
             expit((x - means) / np.exp(log_scales)), cdf_min, cdf_max)
 
     def ppf(cf):
         ppf_max = bin_lb + cf * bin_range * 2 ** (coding_prec - bin_prec)
         ppf_min = (bin_ub
-                   + (cf - (1 << coding_prec)) * bin_range
+                   + (cf - 1) * bin_range
                    * 2 ** (coding_prec - bin_prec))
         return np.clip(
             np.exp(log_scales) * logit(cf) + means, ppf_min, ppf_max)
