@@ -146,6 +146,20 @@ def test_logistic():
                                                         bin_lb=-0.5, bin_ub=0.5),
                 data)
 
+def test_logistic_fast():
+    rng = np.random.RandomState(0)
+    coding_precision = 16
+    bin_precision = 8
+    batch_size = 4
+    means = rng.uniform(0, 1, batch_size)
+    log_scale = rng.randn()
+    # type is important!
+    data = np.array([rng.choice(256) for _ in range(batch_size)]).astype('uint64')
+    check_codec((batch_size,), cs.Logistic_UnifBinsFast(means, log_scale,
+                                                        coding_precision, bin_precision,
+                                                        bin_lb=-0.5, bin_ub=0.5),
+                data)
+
 def test_discretized():
     rng = np.random.RandomState()
     coding_prec = 16

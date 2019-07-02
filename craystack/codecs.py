@@ -3,6 +3,7 @@ from collections import namedtuple
 
 from scipy.stats import norm
 from scipy.special import expit as sigmoid
+from scipy.special import expit, logit
 
 import numpy as np
 import craystack.rans as vrans
@@ -399,7 +400,7 @@ def _discretize(cdf, ppf, low, high, bin_prec, coding_prec):
     Utility function for forming a codec given a (continuous) cdf and its
     inverse. Assumes that
 
-        grad(cdf) >= 2 ** (bin_prec - coding_prec)
+        grad(cdf) >= 2 ** (bin_prec - coding_prec) / (high - low)
 
     so that all intervals end up with non-zero mass.
     """
@@ -413,6 +414,32 @@ def _discretize(cdf, ppf, low, high, bin_prec, coding_prec):
         return np.uint64(
             np.floor((1 << bin_prec) * (x_max - low) / (high - low)))
     return NonUniform(enc_statfun, ppf_, coding_prec)
+
+def Logistic_UnifBinsFast(
+    """
+    Codec for logistic distributed data.
+
+    The discretization is assumed to be uniform between bin_lb and bin_ub. We
+    ensure that the cdf has large enough gradient by clamping between two
+    straight lines.
+    """
+        means, log_scales, coding_prec, bin_prec, bin_lb, bin_ub):
+    bin_range = bin_ub - bin_lb
+    def cdf(x):
+        cdf_min = (x - bin_lb) / bin_range * 2 ** (bin_prec - coding_prec)
+        cdf_max = ((1 << coding_prec)
+                   + (x - bin_ub) / bin_range * 2 ** (bin_prec - coding_prec))
+        return np.clip(
+            expit((x - means) / np.exp(log_scales)), cdf_min, cdf_max)
+
+    def ppf(cf):
+        ppf_max = bin_lb + cf * bin_range * 2 ** (coding_prec - bin_prec)
+        ppf_min = (bin_ub
+                   + (cf - (1 << coding_prec)) * bin_range
+                   * 2 ** (coding_prec - bin_prec))
+        return np.clip(
+            np.exp(log_scales) * logit(cf) + means, ppf_min, ppf_max)
+    return _discretize(cdf, ppf, bin_lb, bin_ub, bin_prec, coding_prec)
 
 def _create_logistic_mixture_buckets(means, log_scales, logit_probs, coding_prec, bin_prec,
                                      bin_lb, bin_ub):
