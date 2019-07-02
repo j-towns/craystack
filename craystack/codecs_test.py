@@ -152,7 +152,7 @@ def test_logistic_fast():
     bin_precision = 8
     batch_size = 4
     means = rng.uniform(0, 1, batch_size)
-    log_scale = rng.randn()
+    log_scale = -7.4
     # type is important!
     data = np.array([rng.choice(256) for _ in range(batch_size)]).astype('uint64')
     check_codec((batch_size,), cs.Logistic_UnifBinsFast(means, log_scale,

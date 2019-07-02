@@ -416,14 +416,13 @@ def _discretize(cdf, ppf, low, high, bin_prec, coding_prec):
     return NonUniform(enc_statfun, ppf_, coding_prec)
 
 def Logistic_UnifBinsFast(
+        means, log_scales, coding_prec, bin_prec, bin_lb, bin_ub):
     """
     Codec for logistic distributed data.
 
-    The discretization is assumed to be uniform between bin_lb and bin_ub. We
-    ensure that the cdf has large enough gradient by clamping between two
-    straight lines.
+    The discretization is assumed to be uniform between bin_lb and bin_ub.
+    no_zero_freqs=True will rebalance buckets, but is slower.
     """
-        means, log_scales, coding_prec, bin_prec, bin_lb, bin_ub):
     bin_range = bin_ub - bin_lb
     def cdf(x):
         cdf_min = (x - bin_lb) / bin_range * 2 ** (bin_prec - coding_prec)
