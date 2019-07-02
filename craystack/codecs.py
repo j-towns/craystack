@@ -376,25 +376,6 @@ def _logistic_ppf(means, log_scale, coding_prec, bin_prec):
         return np.uint64(np.digitize(x, bins) - 1)
     return ppf
 
-def Logistic_UnifBins(mean, log_scale, coding_prec, bin_prec, bin_lb, bin_ub,
-             no_zero_freqs=True, log_scale_min=-6):
-    """
-    Codec for logistic distributed data.
-
-    The discretization is assumed to be uniform between bin_lb and bin_ub.
-    no_zero_freqs=True will rebalance buckets, but is slower.
-    """
-    if no_zero_freqs:
-        cumulative_buckets = _create_logistic_buckets(mean, log_scale, coding_prec, bin_prec,
-                                                      bin_lb, bin_ub)
-        enc_statfun = _cdf_to_enc_statfun(_cdf_from_cumulative_buckets(cumulative_buckets))
-        dec_statfun = _ppf_from_cumulative_buckets(cumulative_buckets)
-    else:
-        log_scale = max(log_scale, log_scale_min)
-        enc_statfun = _cdf_to_enc_statfun(_logistic_cdf(mean, log_scale, coding_prec, bin_prec))
-        dec_statfun = _logistic_ppf(mean, log_scale, coding_prec, bin_prec)
-    return NonUniform(enc_statfun, dec_statfun, coding_prec)
-
 def _discretize(cdf, ppf, low, high, bin_prec, coding_prec):
     """
     Utility function for forming a codec given a (continuous) cdf and its
@@ -415,7 +396,7 @@ def _discretize(cdf, ppf, low, high, bin_prec, coding_prec):
             np.floor((1 << bin_prec) * (x_max - low) / (high - low)))
     return NonUniform(enc_statfun, ppf_, coding_prec)
 
-def Logistic_UnifBinsFast(
+def Logistic_UnifBins(
         means, log_scales, coding_prec, bin_prec, bin_lb, bin_ub):
     """
     Codec for logistic distributed data.
@@ -432,9 +413,7 @@ def Logistic_UnifBinsFast(
 
     def ppf(cf):
         ppf_max = bin_lb + cf * bin_range * 2 ** (coding_prec - bin_prec)
-        ppf_min = (bin_ub
-                   + (cf - 1) * bin_range
-                   * 2 ** (coding_prec - bin_prec))
+        ppf_min = bin_ub + (cf - 1) * bin_range * 2 ** (coding_prec - bin_prec)
         return np.clip(
             np.exp(log_scales) * logit(cf) + means, ppf_min, ppf_max)
     return _discretize(cdf, ppf, bin_lb, bin_ub, bin_prec, coding_prec)
