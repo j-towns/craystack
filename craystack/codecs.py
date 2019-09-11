@@ -163,6 +163,11 @@ def shape(message):
             return np.shape(head)
     return _shape(head)
 
+def is_empty(message):
+    """Check if message is empty.
+    Useful for decoding something of unknown length"""
+    return (not message[1]) and np.all(message[0] == vrans.rans_l)
+
 _uniform_enc_statfun = lambda s: (s, 1)
 _uniform_dec_statfun = lambda cf: cf
 
