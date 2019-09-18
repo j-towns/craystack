@@ -74,7 +74,7 @@ def repeat(codec, n):
     """
     push_, pop_ = codec
     def push(message, symbols):
-        assert np.shape(symbols)[0] == n
+        assert len(symbols) == n
         for symbol in reversed(symbols):
             message = push_(message, symbol)
         return message
@@ -84,7 +84,7 @@ def repeat(codec, n):
         for i in range(n):
             message, symbol = pop_(message)
             symbols.append(symbol)
-        return message, np.asarray(symbols)
+        return message, symbols
     return Codec(push, pop)
 
 def serial(codecs):
@@ -267,6 +267,8 @@ def reshape_head(message, shape):
     information from the message and will fail if the message is empty.
     """
     head, tail = message
+    if head.shape == shape:
+        return message
     message = (np.ravel(head), tail)
     head, tail = _resize_head_1d(message, size=np.prod(shape))
     return np.reshape(head, shape), tail
