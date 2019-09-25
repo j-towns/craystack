@@ -69,8 +69,7 @@ def repeat(codec, n):
     """
     Repeat codec n times.
 
-    Assumes that symbols is a Numpy array with symbols.shape[0] == n. Assume
-    that the codec doesn't change the shape of the ANS stack head.
+    Assumes that symbols is a list with len(symbols) == n.
     """
     push_, pop_ = codec
     def push(message, symbols):
