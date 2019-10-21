@@ -9,8 +9,7 @@ import craystack as cs
 def check_codec(head_shape, codec, data):
     message = cs.empty_message(head_shape)
     push, pop = codec
-    message_ = push(message, data)
-    message_, data_ = pop(message_)
+    message_, data_ = pop(push(message, data))
     assert_message_equal(message, message_)
     np.testing.assert_equal(data, data_)
 
@@ -28,10 +27,10 @@ def test_big_uniform():
     check_codec(shape, cs.BigUniform(precision), data)
 
 def test_benford_higher_bits():
-    data_prec = 8
+    data_prec = 3
     prec = 16
     shape = (400,)
-    data = rng.randint(data_prec, size=shape, dtype="uint64")
+    data = rng.randint(1 << data_prec, size=shape, dtype="uint64")
     check_codec(shape, cs.codecs._benford_high_bits(data_prec, prec), data)
 
 def test_benford():
@@ -89,7 +88,7 @@ def test_parallel():
     check_codec(sum(szs), cs.parallel(u_codecs, view_funs), data)
 
 
-def test_serial(precision=32):
+def test_serial(precision=16):
     shape = (2, 3, 4)
     data1 = rng.randint(precision, size=(7,) + shape, dtype="uint64")
     data2 = rng.randint(2 ** 31, 2 ** 63, size=(5,) + shape, dtype="uint64")
@@ -343,11 +342,30 @@ def test_flatten_unflatten(shape, depth=1000):
 
 
 def test_flatten_rate():
-    rng.seed(0)
-    init_size = 500000
-    head_size = 250000
-    head, tail = cs.random_message(init_size, (head_size,))
-    tail_size = len(cs.flatten((np.array([2 ** 31]), tail)))
-    tail_diff = init_size - tail_size
-    rate = tail_diff / head_size
-    assert abs(rate / ((5+31+15.5)/32) - 1) < 0.001
+    n = 1000
+
+    init_data = np.random.randint(1 << 16, size=8 * n, dtype='uint64')
+
+    init_message = cs.empty_message((1,))
+
+    for datum in init_data:
+        init_message = cs.Uniform(16).push(init_message, datum)
+
+    l_init = len(cs.flatten(init_message))
+
+    ps = np.random.rand(n, 1)
+    data = np.random.rand(n, 1) < ps
+
+    message = init_message
+    for p, datum in zip(ps, data):
+        message = cs.Bernoulli(p, 14).push(message, datum)
+
+    l_scalar = len(cs.flatten(message))
+
+    message = init_message
+    message = cs.reshape_head(message, (n, 1))
+    message = cs.Bernoulli(ps, 14).push(message, data)
+
+    l_vector = len(cs.flatten(message))
+
+    assert (l_vector - l_init) / (l_scalar - l_init) - 1 < 0.001

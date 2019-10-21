@@ -236,11 +236,11 @@ def _discretize(cdf, ppf, low, high, bin_prec, coding_prec):
 def _benford_high_bits(data_prec, prec):
     def cdf(s):
         return ((np.log2((1 << data_prec) + s) - data_prec)
-                / (np.log2((1 << (data_prec + 1)) - 1) - data_prec))
+                / (np.log2(1 << (data_prec + 1)) - data_prec))
 
     def ppf(cf):
         return 2 ** data_prec * (
-            2 ** (cf * (np.log2((1 << (data_prec + 1)) - 1) - data_prec)) - 1)
+            2 ** (cf * (np.log2(1 << (data_prec + 1)) - data_prec)) - 1)
     return _discretize(cdf, ppf, 0, 1 << data_prec, data_prec, prec)
 
 def Benford64():
@@ -256,15 +256,18 @@ def Benford64():
     # x_higher_push, x_higher_pop = _benford_high_bits(8, 16)
     def push(message, x):
         x_len = np.uint64(np.log2(x))
-        message = BigUniform(x_len).push(message, x & ((1 << x_len) - 1))
+        x = x & ((1 << x_len) - 1)
+        message = _benford_high_bits(4, 16).push(message, x >> (x_len - 4))
+        message = BigUniform(x_len - 4).push(message, x & ((1 << (x_len - 4)) - 1))
         message = length_push(message, x_len - 31)
         return message
 
     def pop(message):
         message, x_len = length_pop(message)
         x_len = x_len + 31
-        message, x = BigUniform(x_len).pop(message)
-        return message, (1 << x_len) | x
+        message, x_low = BigUniform(x_len - 4).pop(message)
+        message, x_high = _benford_high_bits(4, 16).pop(message)
+        return message, (1 << x_len) | (x_high << (x_len - 4)) | x_low
     return Codec(push, pop)
 Benford64 = Benford64()
 
