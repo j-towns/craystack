@@ -1,4 +1,4 @@
-import math
+from warnings import warn
 from collections import namedtuple
 
 from scipy.stats import norm
@@ -53,6 +53,10 @@ def NonUniform(enc_statfun, dec_statfun, precision):
     For a number cf in the range [0, 2 ** precision), dec_statfun must return
     the symbol whose range cf lies in, which in the picture above is b.
     """
+    if np.any(precision >= 28):
+        warn('Detected precision over 28. Codecs lose accuracy at high '
+             'precision.')
+
     def push(message, symbol):
         start, freq = enc_statfun(symbol)
         return vrans.push(message, start, freq, precision)
@@ -187,6 +191,58 @@ def Uniform(precision):
     # TODO: special case this in vectorans.py
     return NonUniform(_uniform_enc_statfun, _uniform_dec_statfun, precision)
 
+def BigUniform(precision):
+    """
+    Uniform codec allowing precision > 24. Assumes symbols have dtype uint64.
+    """
+    def push(message, symbol):
+        for lower in [0, 16, 32, 48]:
+            s = (symbol >> lower) & ((1 << 16) - 1)
+            diff = np.where(precision >= lower, precision - lower, 0)
+            p = np.minimum(diff, 16)
+            message = Uniform(p).push(message, s)
+        return message
+
+    def pop(message):
+        symbol = 0
+        for lower in [48, 32, 16, 0]:
+            diff = np.where(precision >= lower, precision - lower, 0)
+            p = np.minimum(diff, 16)
+            message, s = Uniform(p).pop(message)
+            symbol = (symbol << 16) | s
+        return message, symbol
+    return Codec(push, pop)
+
+def _discretize(cdf, ppf, low, high, bin_prec, coding_prec):
+    """
+    Utility function for forming a codec given a (continuous) cdf and its
+    inverse. Assumes that
+
+        grad(cdf) >= 2 ** (bin_prec - coding_prec) / (high - low)
+
+    so that all intervals end up with non-zero mass.
+    """
+    def cdf_(idx):
+        x_low = low + (high - low) * idx / (1 << bin_prec)
+        return np.where(
+            idx >= 0, _nearest_int((1 << coding_prec) * cdf(x_low)), 0)
+    enc_statfun = _cdf_to_enc_statfun(cdf_)
+    def ppf_(cf):
+        x_max = ppf((cf + .5) / (1 << coding_prec))
+        return np.uint64(
+            np.floor((1 << bin_prec) * (x_max - low) / (high - low)))
+    return NonUniform(enc_statfun, ppf_, coding_prec)
+
+def _benford_high_bits(data_prec, prec):
+    def cdf(s):
+        return ((np.log2((1 << data_prec) + s) - data_prec)
+                / (np.log2((1 << (data_prec + 1)) - 1) - data_prec))
+
+    def ppf(cf):
+        return 2 ** data_prec * (
+            2 ** (cf * (np.log2((1 << (data_prec + 1)) - 1) - data_prec)) - 1)
+    return _discretize(cdf, ppf, 0, 1 << data_prec, data_prec, prec)
+
 def Benford64():
     """
     Simple self-delimiting code for numbers x with
@@ -197,23 +253,18 @@ def Benford64():
     vectorans stack heads.
     """
     length_push, length_pop = Uniform(5)
-    x_lower_push, x_lower_pop = Uniform(31)
+    # x_higher_push, x_higher_pop = _benford_high_bits(8, 16)
     def push(message, x):
-        message = x_lower_push(message, x & ((1 << 31) - 1))
         x_len = np.uint64(np.log2(x))
-        x = x & ((1 << x_len) - 1)  # Rm leading 1
-        x_higher_push, _ = Uniform(x_len - 31)
-        message = x_higher_push(message, x >> 31)
+        message = BigUniform(x_len).push(message, x & ((1 << x_len) - 1))
         message = length_push(message, x_len - 31)
         return message
 
     def pop(message):
         message, x_len = length_pop(message)
         x_len = x_len + 31
-        _, x_higher_pop = Uniform(x_len - 31)
-        message, x_higher = x_higher_pop(message)
-        message, x_lower = x_lower_pop(message)
-        return message, (1 << x_len) | (x_higher << 31) | x_lower
+        message, x = BigUniform(x_len).pop(message)
+        return message, (1 << x_len) | x
     return Codec(push, pop)
 Benford64 = Benford64()
 
@@ -348,26 +399,6 @@ def Categorical(p, prec):
     enc_statfun = _cdf_to_enc_statfun(_cdf_from_cumulative_buckets(cumulative_buckets))
     dec_statfun = _ppf_from_cumulative_buckets(cumulative_buckets)
     return NonUniform(enc_statfun, dec_statfun, prec)
-
-def _discretize(cdf, ppf, low, high, bin_prec, coding_prec):
-    """
-    Utility function for forming a codec given a (continuous) cdf and its
-    inverse. Assumes that
-
-        grad(cdf) >= 2 ** (bin_prec - coding_prec) / (high - low)
-
-    so that all intervals end up with non-zero mass.
-    """
-    def cdf_(idx):
-        x_low = low + (high - low) * idx / (1 << bin_prec)
-        return np.where(
-            idx >= 0, _nearest_int((1 << coding_prec) * cdf(x_low)), 0)
-    enc_statfun = _cdf_to_enc_statfun(cdf_)
-    def ppf_(cf):
-        x_max = ppf((cf + .5) / (1 << coding_prec))
-        return np.uint64(
-            np.floor((1 << bin_prec) * (x_max - low) / (high - low)))
-    return NonUniform(enc_statfun, ppf_, coding_prec)
 
 def Logistic_UnifBins(
         means, log_scales, coding_prec, bin_prec, bin_lb, bin_ub):

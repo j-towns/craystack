@@ -21,6 +21,18 @@ def test_uniform():
     data = rng.randint(precision, size=shape, dtype="uint64")
     check_codec(shape, cs.Uniform(precision), data)
 
+def test_big_uniform():
+    shape = (2, 3, 5)
+    precision = rng.randint(64, size=shape, dtype="uint64")
+    data = rng.randint(1 << 64, size=shape, dtype="uint64") % (1 << precision)
+    check_codec(shape, cs.BigUniform(precision), data)
+
+def test_benford_higher_bits():
+    data_prec = 8
+    prec = 16
+    shape = (400,)
+    data = rng.randint(data_prec, size=shape, dtype="uint64")
+    check_codec(shape, cs.codecs._benford_high_bits(data_prec, prec), data)
 
 def test_benford():
     shape = (2, 3, 5)
