@@ -13,21 +13,21 @@ def empty_message(shape):
     """
     return (np.full(shape, rans_l, "uint64"), ())
 
-def stack_extend(message, arr):
-    return arr, message
+def stack_extend(stack, arr):
+    return arr, stack
 
-def stack_slice(message, n):
+def stack_slice(stack, n):
     slc = []
     while n > 0:
-        arr, message = message
+        arr, stack = stack
         if n >= len(arr):
             slc.append(arr)
             n -= len(arr)
         else:
             slc.append(arr[:n])
-            message = arr[n:], message
+            stack = arr[n:], stack
             break
-    return message, np.concatenate(slc)
+    return stack, np.concatenate(slc)
 
 def push(x, starts, freqs, precisions):
     head, tail = x
