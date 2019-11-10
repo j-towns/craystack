@@ -263,8 +263,7 @@ def test_flatten_unflatten():
 
 
 def assert_message_equal(message1, message2):
-    np.testing.assert_equal(rans.flatten(message1),
-                            rans.flatten(message2))
+    assert rans.message_equal(message1, message2)
 
 
 @pytest.mark.parametrize('old_size', [141, 32, 17, 6, 3])

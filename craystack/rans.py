@@ -13,28 +13,28 @@ def empty_message(shape):
     """
     return (np.full(shape, rans_l, "uint64"), ())
 
-def cons_list_extend(ls, els):
-    return (els, ls) if len(els) else ls
+def message_extend(message, arr):
+    return arr, message if len(arr) else message
 
-def cons_list_slice(ls, n):
+def message_slice(message, n):
     slc = []
     while n > 0:
-        el, ls = ls
-        if n >= len(el):
-            slc.append(el)
-            n -= len(el)
+        arr, message = message
+        if n >= len(arr):
+            slc.append(arr)
+            n -= len(arr)
         else:
-            slc.append(el[:n])
-            ls = el[n:], ls
+            slc.append(arr[:n])
+            message = arr[n:], message
             break
-    return ls, np.concatenate(slc)
+    return message, np.concatenate(slc)
 
 def push(x, starts, freqs, precisions):
     head, tail = x
     # assert head.shape == starts.shape == freqs.shape
     idxs = head >= ((rans_l >> precisions) << 32) * freqs
     if np.any(idxs) > 0:
-        tail = cons_list_extend(tail, np.uint32(head[idxs]))
+        tail = message_extend(tail, np.uint32(head[idxs]))
         head = np.copy(head)  # Ensure no side-effects
         head[idxs] >>= 32
     head_div_freqs, head_mod_freqs = np.divmod(head, freqs)
@@ -48,7 +48,7 @@ def pop(x, precisions):
         idxs = head < rans_l
         n = np.sum(idxs)
         if n > 0:
-            tail, new_head = cons_list_slice(tail_, n)
+            tail, new_head = message_slice(tail_, n)
             head[idxs] = (head[idxs] << 32) | new_head
         else:
             tail = tail_
@@ -69,3 +69,6 @@ def unflatten(arr, shape):
     size = np.prod(shape)
     head = np.uint64(arr[:size]) << 32 | np.uint64(arr[size:2 * size])
     return np.reshape(head, shape), (arr[2 * size:], ())
+
+def message_equal(message1, message2):
+    return np.all(flatten(message1) == flatten(message2))
