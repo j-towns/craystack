@@ -14,7 +14,7 @@ def empty_message(shape):
     return (np.full(shape, rans_l, "uint64"), ())
 
 def message_extend(message, arr):
-    return arr, message if len(arr) else message
+    return arr, message
 
 def message_slice(message, n):
     slc = []
