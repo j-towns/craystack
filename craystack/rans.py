@@ -13,10 +13,10 @@ def empty_message(shape):
     """
     return (np.full(shape, rans_l, "uint64"), ())
 
-def message_extend(message, arr):
+def stack_extend(message, arr):
     return arr, message
 
-def message_slice(message, n):
+def stack_slice(message, n):
     slc = []
     while n > 0:
         arr, message = message
@@ -34,7 +34,7 @@ def push(x, starts, freqs, precisions):
     # assert head.shape == starts.shape == freqs.shape
     idxs = head >= ((rans_l >> precisions) << 32) * freqs
     if np.any(idxs) > 0:
-        tail = message_extend(tail, np.uint32(head[idxs]))
+        tail = stack_extend(tail, np.uint32(head[idxs]))
         head = np.copy(head)  # Ensure no side-effects
         head[idxs] >>= 32
     head_div_freqs, head_mod_freqs = np.divmod(head, freqs)
@@ -48,7 +48,7 @@ def pop(x, precisions):
         idxs = head < rans_l
         n = np.sum(idxs)
         if n > 0:
-            tail, new_head = message_slice(tail_, n)
+            tail, new_head = stack_slice(tail_, n)
             head[idxs] = (head[idxs] << 32) | new_head
         else:
             tail = tail_
