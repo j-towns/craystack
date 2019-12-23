@@ -75,17 +75,16 @@ def repeat(codec, n):
 
     Assumes that symbols is a list with len(symbols) == n.
     """
-    push_, pop_ = codec
     def push(message, symbols):
         assert len(symbols) == n
         for symbol in reversed(symbols):
-            message = push_(message, symbol)
+            message = codec.push(message, symbol)
         return message
 
     def pop(message):
         symbols = []
         for i in range(n):
-            message, symbol = pop_(message)
+            message, symbol = codec.pop(message)
             symbols.append(symbol)
         return message, symbols
     return Codec(push, pop)
@@ -119,16 +118,15 @@ def substack(codec, view_fun):
     view_fun = lambda head: head[0]
     to run the codec on only the first element of the head
     """
-    push_, pop_ = codec
     def push(message, data, *args, **kwargs):
         head, tail = message
         subhead, update = util.view_update(head, view_fun)
-        subhead, tail = push_((subhead, tail), data, *args, **kwargs)
+        subhead, tail = codec.push((subhead, tail), data, *args, **kwargs)
         return update(subhead), tail
     def pop(message, *args, **kwargs):
         head, tail = message
         subhead, update = util.view_update(head, view_fun)
-        (subhead, tail), data = pop_((subhead, tail), *args, **kwargs)
+        (subhead, tail), data = codec.pop((subhead, tail), *args, **kwargs)
         return (update(subhead), tail), data
     return Codec(push, pop)
 
@@ -144,13 +142,13 @@ def parallel(codecs, view_funs):
               for codec, view_fun in zip(codecs, view_funs)]
     def push(message, symbols):
         assert len(symbols) == len(codecs)
-        for (push, _), symbol in reversed(list(zip(codecs, symbols))):
-            message = push(message, symbol)
+        for codec, symbol in reversed(list(zip(codecs, symbols))):
+            message = codec.push(message, symbol)
         return message
     def pop(message):
         symbols = []
-        for _, pop in codecs:
-            message, symbol = pop(message)
+        for codec in codecs:
+            message, symbol = codec.pop(message)
             symbols.append(symbol)
         assert len(symbols) == len(codecs)
         return message, symbols
