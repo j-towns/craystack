@@ -1,3 +1,5 @@
+__Informal disclaimer:__ Craystack is experimental software for prototyping and research in lossless compression. We will change (and probably break) parts of Craystack, and do not make any guarantees about API stability.
+
 # Craystack
 The basic building blocks for doing lossless compression are
 
@@ -46,3 +48,17 @@ pip install pytest
 Note: this requires pytorch to be installed.
 
 In the examples directory, run `python binary_mnist_vae.py`. This compresses the MNIST test set using a small VAE model, using the BB-ANS algorithm. This uses the [VAE codec](craystack/bb_ans.py#L39), and runs in a few seconds thanks to the vectorization of craystack.
+
+# Authors
+Craystack was written by [Jamie Townsend](https://j-towns.github.io), [Tom Bird](https://tom-bird.github.io/) and [Julius Kunze](https://juliuskunze.com/). If you use Craystack in your research, please cite [this paper](https://openreview.net/forum?id=r1lZgyBYwS). Bibtex:
+
+```
+@inproceedings{
+townsend2020hilloc,
+title={Hi{\{}LL{\}}oC: lossless image compression with hierarchical latent variable models},
+author={James Townsend and Thomas Bird and Julius Kunze and David Barber},
+booktitle={International Conference on Learning Representations},
+year={2020},
+url={https://openreview.net/forum?id=r1lZgyBYwS}
+}
+```
