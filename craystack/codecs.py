@@ -406,7 +406,8 @@ def Logistic_UnifBins(
     """
     Codec for logistic distributed data.
 
-    The discretization is assumed to be uniform between bin_lb and bin_ub.
+    The discretization is assumed to be uniform (evenly spaced) between bin_lb
+    and bin_ub.
     """
     bin_range = bin_ub - bin_lb
     def cdf(x):
