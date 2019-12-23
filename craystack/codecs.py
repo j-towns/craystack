@@ -407,7 +407,6 @@ def Logistic_UnifBins(
     Codec for logistic distributed data.
 
     The discretization is assumed to be uniform between bin_lb and bin_ub.
-    no_zero_freqs=True will rebalance buckets, but is slower.
     """
     bin_range = bin_ub - bin_lb
     def cdf(x):
