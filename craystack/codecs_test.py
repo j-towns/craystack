@@ -4,6 +4,7 @@ from scipy.special import expit, logit
 import pytest
 
 import craystack as cs
+from craystack import rans
 
 
 def check_codec(head_shape, codec, data):
@@ -262,7 +263,7 @@ def test_flatten_unflatten():
 
 
 def assert_message_equal(message1, message2):
-    np.testing.assert_equal(message1, message2)
+    assert rans.message_equal(message1, message2)
 
 
 @pytest.mark.parametrize('old_size', [141, 32, 17, 6, 3])
@@ -283,13 +284,7 @@ def test_resize_head_1d(old_size, new_size, depth=1000):
     resized = cs.codecs._resize_head_1d(message, new_size)
     reconstructed = cs.codecs._resize_head_1d(resized, old_size)
 
-    init_head, init_tail = message
-    recon_head, recon_tail = reconstructed
-    np.testing.assert_equal(init_head, recon_head)
-    while init_tail:
-        el, init_tail = init_tail
-        el_, recon_tail = recon_tail
-        assert el == el_
+    assert_message_equal(message, reconstructed)
 
 
 @pytest.mark.parametrize('old_shape', [(100,), (1, 23), (2, 4, 5)])
@@ -308,13 +303,7 @@ def test_reshape_head(old_shape, new_shape, depth=1000):
     resized = cs.reshape_head(message, new_shape)
     reconstructed = cs.reshape_head(resized, old_shape)
 
-    init_head, init_tail = message
-    recon_head, recon_tail = reconstructed
-    np.testing.assert_equal(init_head, recon_head)
-    while init_tail:
-        el, init_tail = init_tail
-        el_, recon_tail = recon_tail
-        assert el == el_
+    assert_message_equal(message, reconstructed)
 
 
 @pytest.mark.parametrize('shape', [(100,), (1, 23), (2, 4, 5)])
@@ -332,13 +321,7 @@ def test_flatten_unflatten(shape, depth=1000):
     flattened = cs.flatten(message)
     reconstructed = cs.unflatten(flattened, shape)
 
-    init_head, init_tail = message
-    recon_head, recon_tail = reconstructed
-    np.testing.assert_equal(init_head, recon_head)
-    while init_tail:
-        el, init_tail = init_tail
-        el_, recon_tail = recon_tail
-        assert el == el_
+    assert_message_equal(message, reconstructed)
 
 
 def test_flatten_rate():

@@ -13,28 +13,30 @@ def empty_message(shape):
     """
     return (np.full(shape, rans_l, "uint64"), ())
 
-def cons_list_extend(ls, els):
-    for el in els[::-1]:
-        ls = el, ls
-    return ls
+def stack_extend(stack, arr):
+    return arr, stack
 
-def cons_list_slice(ls, n):
-    if n == 0:
-        return ls, np.array([], dtype="uint32")
+def stack_slice(stack, n):
     slc = []
     while n > 0:
-        el, ls = ls
-        slc.append(el)
-        n -= 1
-    return ls, np.asarray(slc)
+        arr, stack = stack
+        if n >= len(arr):
+            slc.append(arr)
+            n -= len(arr)
+        else:
+            slc.append(arr[:n])
+            stack = arr[n:], stack
+            break
+    return stack, np.concatenate(slc)
 
 def push(x, starts, freqs, precisions):
     head, tail = x
     # assert head.shape == starts.shape == freqs.shape
     idxs = head >= ((rans_l >> precisions) << 32) * freqs
-    tail = cons_list_extend(tail, np.uint32(head[idxs]))
-    head = np.copy(head)  # Ensure no side-effects
-    head[idxs] >>= 32
+    if np.any(idxs) > 0:
+        tail = stack_extend(tail, np.uint32(head[idxs]))
+        head = np.copy(head)  # Ensure no side-effects
+        head[idxs] >>= 32
     head_div_freqs, head_mod_freqs = np.divmod(head, freqs)
     return (head_div_freqs << precisions) + head_mod_freqs + starts, tail
 
@@ -45,26 +47,28 @@ def pop(x, precisions):
         head = freqs * (head_ >> precisions) + cfs - starts
         idxs = head < rans_l
         n = np.sum(idxs)
-        tail, new_head = cons_list_slice(tail_, n)
-        head[idxs] = (head[idxs] << 32) | new_head
+        if n > 0:
+            tail, new_head = stack_slice(tail_, n)
+            head[idxs] = (head[idxs] << 32) | new_head
+        else:
+            tail = tail_
         return head, tail
     return cfs, pop
 
 def flatten(x):
     """Flatten a vrans state x into a 1d numpy array."""
     head, x = np.ravel(x[0]), x[1]
-    out = list(np.uint32(head >> 32))
-    out.extend(np.uint32(head))
+    out = [np.uint32(head >> 32), np.uint32(head)]
     while x:
         head, x = x
         out.append(head)
-    return np.asarray(out)
+    return np.concatenate(out)
 
 def unflatten(arr, shape):
     """Unflatten a 1d numpy array into a vrans state."""
     size = np.prod(shape)
-    ret = ()
-    for head in arr[:2 * size - 1:-1]:
-        ret = head, ret
     head = np.uint64(arr[:size]) << 32 | np.uint64(arr[size:2 * size])
-    return np.reshape(head, shape), ret
+    return np.reshape(head, shape), (arr[2 * size:], ())
+
+def message_equal(message1, message2):
+    return np.all(flatten(message1) == flatten(message2))
