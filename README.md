@@ -24,6 +24,14 @@ The codecs in Craystack are
  - **Stacky**, meaning last-in-first-out (LIFO). The last item that an encoder
    compresses will be the first item that a decoder decompresses.
 
+The core of Craystack is a vectorized version of Asymmetric Numeral Systems (ANS),
+implemented using NumPy. ANS is a first-in-first-out (i.e. stack-like) entropy 
+coding method, invented by Jarek Duda. The vectorized method is based
+on a [paper](https://arxiv.org/abs/1402.3392), and [accompanying code](
+https://github.com/rygorous/ryg_rans), by Fabian Giesen. Jamie has also written
+an accessible [tutorial on ANS](https://arxiv.org/abs/2001.09186), with
+a pedagogical implementation at https://github.com/j-towns/ans-notes.
+
 # Installation
 To install craystack:
 
