@@ -110,6 +110,62 @@ def serial(codecs):
 
     return Codec(push, pop)
 
+def from_generator(g_factory):
+    """
+    This allows defining a codec using a Python generator function. The
+    generator must `yield` a sequence of codecs, in the order in which data
+    should be decoded. We can easily implement a 'serial' codec in terms of
+    `from_generator`:
+
+    >>> def serial(codecs):
+    >>>     def gen_factory():
+    ...         for codec in codecs:
+    ...             yield codec
+    ...     return from_generator(gen_factory)
+
+    The symbols resulting from decoding can be used by the generator, by
+    assigning the result of the yield expression, for example, we might firstly
+    decode the precision of a Uniformly distributed symbol, then decode the
+    symbol itself:
+
+    >>> def gen_factory():
+    ...     prec = (yield cs.Uniform(16))
+    ...     yield cs.Uniform(prec)
+    >>>
+    >>> dependent_codec = from_generator(gen_factory)
+    """
+    def safe_next(generator):
+        return safe_send(generator, None)
+
+    def safe_send(generator, s):
+        try: n = generator.send(s)
+        except StopIteration: return True, None
+        return False, n
+
+    def push(message, result):
+        g = g_factory()
+        codec_stack = []
+        done, codec = safe_next(g)
+        for symbol in result:
+            assert not done
+            codec_stack.append(codec)
+            done, codec = safe_send(g, symbol)
+        for codec, symbol in reversed(list(zip(codec_stack, result))):
+            message = codec.push(message, symbol)
+        return message
+
+    def pop(message):
+        g = g_factory()
+        result = []
+        done, codec = safe_next(g)
+        while not done:
+            message, symbol = codec.pop(message)
+            result.append(symbol)
+            done, codec = safe_send(g, symbol)
+        return message, result
+
+    return Codec(push, pop)
+
 def substack(codec, view_fun):
     """
     Apply a codec on a subset of a message head.

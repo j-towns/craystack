@@ -41,7 +41,6 @@ def test_benford():
                                & ((1 << data_len) - 1)))
     check_codec(shape, cs.Benford64, data)
 
-
 def test_benford_inverse():
     shape = (2, 3, 5)
     data_len = rng.randint(31, 63, shape, dtype="uint64")
@@ -49,14 +48,12 @@ def test_benford_inverse():
                                & ((1 << data_len) - 1)))
     check_codec(shape, cs.Benford64, data)
 
-
 def test_repeat():
     precision = 4
     n_data = 7
     shape = (2, 3, 5)
     data = rng.randint(precision, size=(n_data,) + shape, dtype="uint64")
     check_codec(shape, cs.repeat(cs.Uniform(precision), n_data), data)
-
 
 def test_substack():
     n_data = 100
@@ -73,7 +70,6 @@ def test_substack():
     np.testing.assert_equal(message, message_)
     np.testing.assert_equal(data, data_)
 
-
 def test_parallel():
     precs = [1, 2, 4, 8, 16]
     szs = [2, 3, 4, 5, 6]
@@ -88,16 +84,14 @@ def test_parallel():
             for p, size in zip(precs, szs)]
     check_codec(sum(szs), cs.parallel(u_codecs, view_funs), data)
 
-
 def test_serial(precision=16):
     shape = (2, 3, 4)
-    data1 = rng.randint(precision, size=(7,) + shape, dtype="uint64")
+    data1 = rng.randint(1 << precision, size=(7,) + shape, dtype="uint64")
     data2 = rng.randint(2 ** 31, 2 ** 63, size=(5,) + shape, dtype="uint64")
     data = list(data1) + list(data2)
 
     check_codec(shape, cs.serial([cs.Uniform(precision) for _ in data1] +
                                  [cs.Benford64 for _ in data2]), data)
-
 
 @pytest.mark.parametrize('shape2', [(1, 6, ), (1, 5, ), (1, 4, )])
 def test_serial_resized(shape2, shape1=(5, ), precision=4):
@@ -126,13 +120,44 @@ def test_serial_resized(shape2, shape1=(5, ), precision=4):
                                   [resize_codec] +
                                   [codec for _ in data2]), data)
 
+def test_from_generator_simple():
+    def gen_factory():
+        yield cs.Uniform(8)
+    data = [np.array(rng.randint(8, size=(1,), dtype="uint64"))]
+    check_codec((1,), cs.from_generator(gen_factory), data)
+
+def test_from_generator_serial(precision=16):
+    shape = (2, 3, 4)
+    data1 = rng.randint(1 << precision, size=(7,) + shape, dtype="uint64")
+    data2 = rng.randint(2 ** 31, 2 ** 63, size=(5,) + shape, dtype="uint64")
+    data = list(data1) + list(data2)
+
+    def gen_factory():
+        for _ in range(7):
+            yield cs.Uniform(precision)
+        for _ in range(5):
+            yield cs.Benford64
+
+    check_codec(shape, cs.from_generator(gen_factory), data)
+
+def test_from_generator_dependent():
+    shape = (2, 3, 4)
+    precs = rng.randint(16, size=shape, dtype="uint64")
+    data = rng.randint(1 << precs, size=shape, dtype="uint64")
+    data = [precs, data]
+
+    def gen_factory():
+        precs = (yield cs.Uniform(16))
+        yield cs.Uniform(precs)
+
+    check_codec(shape, cs.from_generator(gen_factory), data)
+
 def test_bernoulli():
     precision = 4
     shape = (2, 3, 5)
     p = rng.random(shape)
     data = np.uint64(rng.random(shape) < p)
     check_codec(shape, cs.Bernoulli(p, precision), data)
-
 
 def test_categorical():
     precision = 4
@@ -142,7 +167,6 @@ def test_categorical():
     data = np.reshape([rng.choice(4, p=p) for p in ps], shape)
     ps = np.reshape(ps, shape + (4,))
     check_codec(shape, cs.Categorical(ps, precision), data)
-
 
 def test_logistic():
     rng = np.random.RandomState(0)
@@ -181,7 +205,6 @@ def test_logistic_mixture():
     check_codec((shape[0],), cs.LogisticMixture_UnifBins(means, log_scales, logit_probs,
                                                              precision, bin_prec=8, bin_lb=-1., bin_ub=1.), data)
 
-
 def test_autoregressive():
     precision = 8
     batch_size = 3
@@ -200,7 +223,6 @@ def test_autoregressive():
                                       elem_idxs,
                                       elem_codec),
                 data)
-
 
 def test_gaussian_db():
     bin_precision = 8
@@ -222,7 +244,6 @@ def test_gaussian_db():
                                           coding_precision, bin_precision),
                 data)
 
-
 def test_gaussian_ub():
     bin_lb = np.array([-2., -3.])
     bin_ub = np.array([2., 3.])
@@ -239,7 +260,6 @@ def test_gaussian_ub():
                 cs.DiagGaussian_UnifBins(means, stdds, bin_lb, bin_ub,
                                                   coding_precision, n_bins),
                 data)
-
 
 def test_flatten_unflatten():
     n = 100
@@ -261,10 +281,8 @@ def test_flatten_unflatten():
     assert np.all(state[0] == state_[0])
     assert state[1] == state_[1]
 
-
 def assert_message_equal(message1, message2):
     assert rans.message_equal(message1, message2)
-
 
 @pytest.mark.parametrize('old_size', [141, 32, 17, 6, 3])
 @pytest.mark.parametrize('new_size', [141, 32, 17, 6, 3])
@@ -286,7 +304,6 @@ def test_resize_head_1d(old_size, new_size, depth=1000):
 
     assert_message_equal(message, reconstructed)
 
-
 @pytest.mark.parametrize('old_shape', [(100,), (1, 23), (2, 4, 5)])
 @pytest.mark.parametrize('new_shape', [(100,), (1, 23), (2, 4, 5)])
 def test_reshape_head(old_shape, new_shape, depth=1000):
@@ -305,7 +322,6 @@ def test_reshape_head(old_shape, new_shape, depth=1000):
 
     assert_message_equal(message, reconstructed)
 
-
 @pytest.mark.parametrize('shape', [(100,), (1, 23), (2, 4, 5)])
 def test_flatten_unflatten(shape, depth=1000):
     np.random.seed(0)
@@ -322,7 +338,6 @@ def test_flatten_unflatten(shape, depth=1000):
     reconstructed = cs.unflatten(flattened, shape)
 
     assert_message_equal(message, reconstructed)
-
 
 def test_flatten_rate():
     n = 1000
