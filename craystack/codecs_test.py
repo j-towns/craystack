@@ -84,41 +84,15 @@ def test_parallel():
             for p, size in zip(precs, szs)]
     check_codec(sum(szs), cs.parallel(u_codecs, view_funs), data)
 
-def test_serial(precision=16):
+def test_from_iterable(precision=16):
     shape = (2, 3, 4)
     data1 = rng.randint(1 << precision, size=(7,) + shape, dtype="uint64")
     data2 = rng.randint(2 ** 31, 2 ** 63, size=(5,) + shape, dtype="uint64")
     data = list(data1) + list(data2)
 
-    check_codec(shape, cs.serial([cs.Uniform(precision) for _ in data1] +
-                                 [cs.Benford64 for _ in data2]), data)
-
-@pytest.mark.parametrize('shape2', [(1, 6, ), (1, 5, ), (1, 4, )])
-def test_serial_resized(shape2, shape1=(5, ), precision=4):
-    data1 = rng.randint(precision, size=(7,) + shape1, dtype="uint64")
-    data2 = rng.randint(precision, size=(20,) + shape2, dtype="uint64")
-    data = list(data1) + list(data2)
-
-    codec = cs.Uniform(precision)
-    push, pop = codec
-
-    def push_resize(message, symbol):
-        assert message[0].shape == shape2
-        message = cs.reshape_head(message, shape1)
-        message = push(message, symbol)
-        return message
-
-    def pop_resize(message):
-        assert message[0].shape == shape1
-        message, symbol = pop(message)
-        message = cs.reshape_head(message, shape2)
-        return message, symbol
-
-    resize_codec = cs.Codec(push_resize, pop_resize)
-
-    check_codec(shape2, cs.serial([codec for _ in data1[:-1]] +
-                                  [resize_codec] +
-                                  [codec for _ in data2]), data)
+    check_codec(shape, cs.from_iterable(
+        [cs.Uniform(precision) for _ in data1]
+        + [cs.Benford64 for _ in data2]), data)
 
 def test_from_generator_simple():
     def gen_factory():

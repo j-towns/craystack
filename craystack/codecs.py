@@ -1,3 +1,4 @@
+import itertools
 from warnings import warn
 from collections import namedtuple
 
@@ -75,42 +76,20 @@ def repeat(codec, n):
 
     Assumes that symbols is a list with len(symbols) == n.
     """
-    def push(message, symbols):
-        assert len(symbols) == n
-        for symbol in reversed(symbols):
-            message = codec.push(message, symbol)
-        return message
+    return from_iterable(itertools.repeat(codec, n))
 
-    def pop(message):
-        symbols = []
-        for i in range(n):
-            message, symbol = codec.pop(message)
-            symbols.append(symbol)
-        return message, symbols
-    return Codec(push, pop)
-
-def serial(codecs):
+def from_iterable(iterable):
     """
-    Applies given codecs in series.
-
-    Codecs and symbols can be any iterable.
-    Codecs are allowed to change the shape of the ANS stack head.
+    Allows defining a codec in terms of a sequence of codecs. Each element of
+    the argument `iterable` must be a codec. The codecs should be arranged in
+    the order in which data will be *decoded* (popped).
     """
-    def push(message, symbols):
-        for codec, symbol in reversed(list(zip(codecs, symbols))):
-            message = codec.push(message, symbol)
-        return message
+    iterable = list(iterable)
+    def gen_fun():
+        return (x for x in iterable)
+    return from_generator(gen_fun)
 
-    def pop(message):
-        symbols = []
-        for codec in codecs:
-            message, symbol = codec.pop(message)
-            symbols.append(symbol)
-        return message, symbols
-
-    return Codec(push, pop)
-
-def from_generator(g_factory):
+def from_generator(generator_fun):
     """
     This allows defining a codec using a Python generator function. The
     generator must `yield` a sequence of codecs, in the order in which data
@@ -118,21 +97,21 @@ def from_generator(g_factory):
     `from_generator`:
 
     >>> def serial(codecs):
-    >>>     def gen_factory():
+    >>>     def gen_fun():
     ...         for codec in codecs:
     ...             yield codec
-    ...     return from_generator(gen_factory)
+    ...     return from_generator(gen_fun)
 
     The symbols resulting from decoding can be used by the generator, by
     assigning the result of the yield expression, for example, we might firstly
     decode the precision of a Uniformly distributed symbol, then decode the
     symbol itself:
 
-    >>> def gen_factory():
+    >>> def gen_fun():
     ...     prec = (yield cs.Uniform(16))
     ...     yield cs.Uniform(prec)
     >>>
-    >>> dependent_codec = from_generator(gen_factory)
+    >>> dependent_codec = from_generator(gen_fun)
     """
     def safe_next(generator):
         return safe_send(generator, None)
@@ -143,7 +122,7 @@ def from_generator(g_factory):
         return False, n
 
     def push(message, result):
-        g = g_factory()
+        g = generator_fun()
         codec_stack = []
         done, codec = safe_next(g)
         for symbol in result:
@@ -155,7 +134,7 @@ def from_generator(g_factory):
         return message
 
     def pop(message):
-        g = g_factory()
+        g = generator_fun()
         result = []
         done, codec = safe_next(g)
         while not done:
@@ -242,7 +221,7 @@ def Uniform(precision):
     """
     Codec for symbols uniformly distributed over range(1 << precision).
     """
-    # TODO: special case this in vectorans.py
+    # TODO: special case this in rans.py
     return NonUniform(_uniform_enc_statfun, _uniform_dec_statfun, precision)
 
 def BigUniform(precision):
