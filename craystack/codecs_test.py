@@ -52,7 +52,7 @@ def test_repeat():
     precision = 4
     n_data = 7
     shape = (2, 3, 5)
-    data = rng.randint(precision, size=(n_data,) + shape, dtype="uint64")
+    data = rng.randint(1 << precision, size=(n_data,) + shape, dtype="uint64")
     check_codec(shape, cs.repeat(cs.Uniform(precision), n_data), data)
 
 def test_substack():
