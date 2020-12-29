@@ -3,8 +3,8 @@ from setuptools import setup
 setup(
     name='craystack',
     version='0.0',
-    description='Buildy crayzy stacky codecs',
-    author='Jamie Townsend',
+    description='Compression tools for machine learning researchers',
+    author='Jamie Townsend and Thomas Bird and Julius Kunze',
     author_email='jamiehntownsend@gmail.com',
     packages=['craystack'],
     install_requires=['numpy', 'scipy', 'autograd'],
