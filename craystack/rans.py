@@ -23,15 +23,8 @@ def stack_extend(stack, arr):
 
 def stack_slice(stack, n):
     slc = []
-    shape = stack[0].shape
     while n > 0:
-
-        if len(stack) < 2:
-            # empty pop
-            arr, stack = base_message(shape, randomize=True)
-        else:
-            arr, stack = stack
-
+        arr, stack = stack
         if n >= len(arr):
             slc.append(arr)
             n -= len(arr)
