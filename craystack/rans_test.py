@@ -65,28 +65,3 @@ def test_base_message():
     num_bits = num_lower_bits*100_000
     assert (head_rnd >> (num_lower_bits - 1) == 1).all()
     assert  0.48 < calc_num_ones(head_rnd)/num_bits < 0.52
-
-def test_stack_slice():
-    stack = (np.array([0, 1]).astype('uint64'),
-             (np.array([2, 3]).astype('uint64'),
-              (np.array([4, 5]).astype('uint64'),
-               ())))
-
-    stack, sliced = rans.stack_slice(stack, 1)
-    assert_equal(        sliced, np.array([0   ]))
-    assert_equal(      stack[0], np.array([1   ]))
-    assert_equal(   stack[1][0], np.array([2, 3]))
-    assert_equal(stack[1][1][0], np.array([4, 5]))
-    assert stack[1][1][1] == ()
-
-    stack, sliced = rans.stack_slice(stack, 2)
-    assert_equal(     sliced, np.array([1, 2]))
-    assert_equal(   stack[0], np.array([3   ]))
-    assert_equal(stack[1][0], np.array([4, 5]))
-    assert stack[1][1] == ()
-
-    stack, sliced = rans.stack_slice(stack, 5)
-    assert len(sliced) == 5
-    assert_equal(sliced[3:] >> num_lower_bits-1, np.array([1, 1]))
-    assert_equal(sliced[:3], np.array([3, 4, 5]))
-    assert stack == ()
