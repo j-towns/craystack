@@ -8,7 +8,7 @@ from craystack import rans
 
 
 def check_codec(head_shape, codec, data):
-    message = cs.empty_message(head_shape)
+    message = cs.base_message(head_shape)
     push, pop = codec
     message_, data_ = pop(push(message, data))
     assert_message_equal(message, message_)
@@ -58,7 +58,7 @@ def test_repeat():
 def test_substack():
     n_data = 100
     prec = 4
-    head, tail = cs.empty_message((4, 4))
+    head, tail = cs.base_message((4, 4))
     head = np.split(head, 2)
     message = head, tail
     data = rng.randint(1 << prec, size=(n_data, 2, 4), dtype='uint64')
@@ -239,7 +239,7 @@ def test_flatten_unflatten():
     n = 100
     shape = (7, 3)
     p = 12
-    state = cs.empty_message(shape)
+    state = cs.base_message(shape)
     some_bits = rng.randint(1 << p, size=(n,) + shape).astype(np.uint64)
     freqs = np.ones(shape, dtype="uint64")
     for b in some_bits:
@@ -267,7 +267,7 @@ def test_resize_head_1d(old_size, new_size, depth=1000):
     p = 8
     bits = np.random.randint(1 << p, size=(depth,) + old_shape, dtype=np.uint64)
 
-    message = cs.empty_message(old_shape)
+    message = cs.base_message(old_shape)
 
     other_bits_push, _ = cs.repeat(cs.Uniform(p), depth)
 
@@ -285,7 +285,7 @@ def test_reshape_head(old_shape, new_shape, depth=1000):
     p = 8
     bits = np.random.randint(1 << p, size=(depth,) + old_shape, dtype=np.uint64)
 
-    message = cs.empty_message(old_shape)
+    message = cs.base_message(old_shape)
 
     other_bits_push, _ = cs.repeat(cs.Uniform(p), depth)
 
@@ -302,7 +302,7 @@ def test_flatten_unflatten(shape, depth=1000):
     p = 8
     bits = np.random.randint(1 << p, size=(depth,) + shape, dtype=np.uint64)
 
-    message = cs.empty_message(shape)
+    message = cs.base_message(shape)
 
     other_bits_push, _ = cs.repeat(cs.Uniform(p), depth)
 
@@ -318,7 +318,7 @@ def test_flatten_rate():
 
     init_data = np.random.randint(1 << 16, size=8 * n, dtype='uint64')
 
-    init_message = cs.empty_message((1,))
+    init_message = cs.base_message((1,))
 
     for datum in init_data:
         init_message = cs.Uniform(16).push(init_message, datum)

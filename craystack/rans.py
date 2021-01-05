@@ -7,11 +7,16 @@ import numpy as np
 
 rans_l = 1 << 31  # the lower bound of the normalisation interval
 
-def empty_message(shape):
+def base_message(shape, randomize=False):
     """
-    Returns an empty ANS message of given shape.
+    Returns a base ANS message of given shape. If randomize=True,
+    populates the lower bits of the head with samples from a Bernoulli(1/2)
+    distribution. The tail is empty.
     """
-    return (np.full(shape, rans_l, "uint64"), ())
+    head = np.full(shape, rans_l, "uint64")
+    if randomize:
+        head += np.random.randint(0, rans_l, size=shape, dtype='uint64')
+    return (head, ())
 
 def stack_extend(stack, arr):
     return arr, stack
