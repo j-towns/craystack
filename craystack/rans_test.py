@@ -51,13 +51,18 @@ def test_flatten_unflatten():
 
 
 def test_base_message():
+    def calc_num_ones(head):
+        return sum([((head >> i) % 2).sum()
+                    for i in range(num_lower_bits)])
+
     num_lower_bits = int(np.log2(rans.rans_l)) + 1
 
     head = rans.base_message(1_000)[0]
-    num_ones = sum([((head >> i) % 2).sum() for i in range(num_lower_bits)])
+    num_ones = calc_num_ones(head)
     assert num_ones == 1_000
 
     head_rnd = rans.base_message(100_000, randomize=True)[0]
     num_bits = num_lower_bits*100_000
-    num_ones_rnd = sum([((head_rnd >> i) % 2).sum() for i in range(num_lower_bits)])
+    num_ones_rnd = calc_num_ones(head_rnd)
+    assert (head_rnd >> (num_lower_bits - 1) == 1).all()
     assert  0.48 < num_ones_rnd/num_bits < 0.52
