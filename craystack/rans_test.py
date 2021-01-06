@@ -53,15 +53,14 @@ def test_flatten_unflatten():
 
 
 def test_base_message():
-    def calc_num_ones(head):
+    def popcount(head):
         return sum([((head >> i) % 2).sum()
                     for i in range(num_lower_bits)])
 
-
     head = rans.base_message(1_000)[0]
-    assert calc_num_ones(head) == 1_000
+    assert popcount(head) == 1_000
 
     head_rnd = rans.base_message(100_000, randomize=True)[0]
     num_bits = num_lower_bits*100_000
     assert (head_rnd >> (num_lower_bits - 1) == 1).all()
-    assert  0.48 < calc_num_ones(head_rnd)/num_bits < 0.52
+    assert  0.48 < popcount(head_rnd)/num_bits < 0.52

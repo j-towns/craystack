@@ -16,7 +16,7 @@ def base_message(shape, randomize=False):
     head = np.full(shape, rans_l, "uint64")
     if randomize:
         head += np.random.randint(0, rans_l, size=shape, dtype='uint64')
-    return (head, ())
+    return head, ()
 
 def stack_extend(stack, arr):
     return arr, stack
