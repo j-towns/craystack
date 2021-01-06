@@ -1,7 +1,9 @@
 from craystack import rans
+from numpy.testing import assert_equal
 import numpy as np
 
 rng = np.random.RandomState(0)
+num_lower_bits = int(np.log2(rans.rans_l)) + 1
 
 
 def test_rans():
@@ -9,7 +11,7 @@ def test_rans():
     precision = 8
     n_data = 1000
 
-    x = rans.empty_message(shape)
+    x = rans.base_message(shape)
     starts = rng.randint(0, 256, size=(n_data,) + shape).astype("uint64")
     freqs = (rng.randint(1, 256, size=(n_data,) + shape).astype("uint64")
              % (256 - starts))
@@ -29,14 +31,14 @@ def test_rans():
         cf, pop = rans.pop(x, precision)
         assert np.all(start <= cf) and np.all(cf < start + freq)
         x = pop(start, freq)
-    assert np.all(x[0] == rans.empty_message(shape)[0])
+    assert np.all(x[0] == rans.base_message(shape)[0])
 
 
 def test_flatten_unflatten():
     n = 100
     shape = (7, 3)
     prec = 12
-    state = rans.empty_message(shape)
+    state = rans.base_message(shape)
     some_bits = rng.randint(1 << prec, size=(n,) + shape).astype(np.uint64)
     freqs = np.ones(shape, dtype="uint64")
     for b in some_bits:
@@ -48,3 +50,17 @@ def test_flatten_unflatten():
     assert np.all(flat == flat_)
     assert np.all(state[0] == state_[0])
     # assert state[1] == state_[1]
+
+
+def test_base_message():
+    def popcount(head):
+        return sum([((head >> i) % 2).sum()
+                    for i in range(num_lower_bits)])
+
+    head = rans.base_message(1_000)[0]
+    assert popcount(head) == 1_000
+
+    head_rnd = rans.base_message(100_000, randomize=True)[0]
+    num_bits = num_lower_bits*100_000
+    assert (head_rnd >> (num_lower_bits - 1) == 1).all()
+    assert  0.48 < popcount(head_rnd)/num_bits < 0.52

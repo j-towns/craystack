@@ -1,2 +1,2 @@
 from craystack.codecs import *
-from craystack.rans import empty_message
+from craystack.rans import base_message
