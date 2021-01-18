@@ -1,4 +1,5 @@
 import itertools
+from functools import lru_cache
 from warnings import warn
 from collections import namedtuple
 
@@ -485,32 +486,21 @@ def LogisticMixture_UnifBins(means, log_scales, logit_probs, coding_prec, bin_pr
     dec_statfun = _ppf_from_cumulative_buckets(cumulative_buckets)
     return NonUniform(enc_statfun, dec_statfun, coding_prec)
 
-std_gaussian_bucket_cache = {}  # Stores bucket endpoints
-std_gaussian_centres_cache = {}  # Stores bucket centres
-
+@lru_cache
 def std_gaussian_buckets(precision):
     """
     Return the endpoints of buckets partitioning the domain of the prior. Each
     bucket has mass 1 / (1 << precision) under the prior.
     """
-    if precision in std_gaussian_bucket_cache:
-        return std_gaussian_bucket_cache[precision]
-    else:
-        buckets = norm.ppf(np.linspace(0, 1, (1 << precision) + 1))
-        std_gaussian_bucket_cache[precision] = buckets
-        return buckets
+    return norm.ppf(np.linspace(0, 1, (1 << precision) + 1))
 
+@lru_cache
 def std_gaussian_centres(precision):
     """
-    Return the centres of mass of buckets partitioning the domain of the prior.
-    Each bucket has mass 1 / (1 << precision) under the prior.
+    Return the medians of buckets partitioning the domain of the prior. Each
+    bucket has mass 1 / (1 << precision) under the prior.
     """
-    if precision in std_gaussian_centres_cache:
-        return std_gaussian_centres_cache[precision]
-    else:
-        centres = norm.ppf((np.arange(1 << precision) + 0.5) / (1 << precision))
-        std_gaussian_centres_cache[precision] = centres
-        return centres
+    return norm.ppf((np.arange(1 << precision) + 0.5) / (1 << precision))
 
 def _gaussian_cdf(mean, stdd, prior_prec, post_prec):
     def cdf(idx):
