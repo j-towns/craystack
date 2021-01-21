@@ -4,6 +4,7 @@ from scipy.special import expit, logit
 import pytest
 
 import craystack as cs
+from craystack import codecs
 from craystack import rans
 
 
@@ -14,6 +15,25 @@ def check_codec(head_shape, codec, data):
     assert_message_equal(message, message_)
     np.testing.assert_equal(data, data_)
 
+def check_cdf_inverse(cdf, ppf, input_prec, coder_prec):
+    assert cdf(0) == 0
+    cfs = np.arange(1 << coder_prec, dtype='uint64')
+    symbols = ppf(cfs)
+    assert np.all((cdf(symbols) <= cfs) & (cfs < cdf(symbols + 1)))
+    assert cdf(1 << input_prec) == 1 << coder_prec
+
+def test_gaussian_cdfs():
+    # We test at very high precision in order to expose floating point
+    # imprecision in scipy.stats.norm.[cdf/ppf]
+    prior_prec = 22
+    posterior_prec = 22
+    mean = 1
+    sigma = 1
+    check_cdf_inverse(codecs._gaussian_cdf(
+                          mean, sigma, prior_prec, posterior_prec),
+                      codecs._gaussian_ppf(
+                          mean, sigma, prior_prec, posterior_prec),
+                      prior_prec, posterior_prec)
 
 def test_uniform():
     precision = 4

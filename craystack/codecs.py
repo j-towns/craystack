@@ -509,12 +509,22 @@ def _gaussian_cdf(mean, stdd, prior_prec, post_prec):
     return cdf
 
 def _gaussian_ppf(mean, stdd, prior_prec, post_prec):
+    cdf = _gaussian_cdf(mean, stdd, prior_prec, post_prec)
     def ppf(cf):
         x = norm.ppf((cf + 0.5) / (1 << post_prec), mean, stdd)
         # Binary search is faster than using the actual gaussian cdf for the
         # precisions we typically use, however the cdf is O(1) whereas search
         # is O(precision), so for high precision cdf will be faster.
-        return np.uint64(np.digitize(x, std_gaussian_buckets(prior_prec)) - 1)
+        idxs = np.uint64(np.digitize(x, std_gaussian_buckets(prior_prec)) - 1)
+        # This loop works around an issue which is extremely rare when we use
+        # float64 everywhere but is common if we work with float32: due to the
+        # finite precision of floating point arithmetic, norm.[cdf,ppf] are not
+        # perfectly inverse to each other.
+        while not np.all((cdf(idxs) <= cf) & (cf < cdf(idxs + 1))):
+            idxs = np.select(
+                [cf < cdf(idxs), cf >= cdf(idxs + 1)],
+                [idxs - 1,       idxs + 1           ], idxs)
+        return idxs
     return ppf
 
 def DiagGaussian_StdBins(mean, stdd, coding_prec, bin_prec):
