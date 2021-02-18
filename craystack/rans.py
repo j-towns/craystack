@@ -1,11 +1,14 @@
 """
 Vectorized implementation of rANS based on https://arxiv.org/abs/1402.3392
 """
+from warnings import warn
 
 import numpy as np
 
 
+rng = np.random.default_rng(0)
 rans_l = 1 << 31  # the lower bound of the normalisation interval
+atleast_1d = lambda x: np.atleast_1d(x).astype('uint64')
 
 def base_message(shape, randomize=False):
     """
@@ -13,9 +16,11 @@ def base_message(shape, randomize=False):
     populates the lower bits of the head with samples from a Bernoulli(1/2)
     distribution. The tail is empty.
     """
+    assert shape and np.prod(shape), 'Shape must be an int > 0' \
+                                     'or tuple with length > 0.'
     head = np.full(shape, rans_l, "uint64")
     if randomize:
-        head += np.random.randint(0, rans_l, size=shape, dtype='uint64')
+        head += rng.integers(0, rans_l, size=shape, dtype='uint64')
     return head, ()
 
 def stack_extend(stack, arr):
@@ -24,7 +29,11 @@ def stack_extend(stack, arr):
 def stack_slice(stack, n):
     slc = []
     while n > 0:
-        arr, stack = stack
+        if stack:
+            arr, stack = stack
+        else:
+            warn('Popping from empty message. Generating random data.')
+            arr, stack = rng.integers(1 << 32, size=n, dtype='uint32'), ()
         if n >= len(arr):
             slc.append(arr)
             n -= len(arr)
@@ -35,6 +44,7 @@ def stack_slice(stack, n):
     return stack, np.concatenate(slc)
 
 def push(x, starts, freqs, precisions):
+    starts, freqs, precisions = map(atleast_1d, (starts, freqs, precisions))
     head, tail = x
     # assert head.shape == starts.shape == freqs.shape
     idxs = head >= ((rans_l >> precisions) << 32) * freqs
@@ -46,9 +56,11 @@ def push(x, starts, freqs, precisions):
     return (head_div_freqs << precisions) + head_mod_freqs + starts, tail
 
 def pop(x, precisions):
+    precisions = atleast_1d(precisions)
     head_, tail_ = x
     cfs = head_ & ((1 << precisions) - 1)
     def pop(starts, freqs):
+        starts, freqs = map(atleast_1d, (starts, freqs))
         head = freqs * (head_ >> precisions) + cfs - starts
         idxs = head < rans_l
         n = np.sum(idxs)
