@@ -48,7 +48,7 @@ def push(x, starts, freqs, precisions):
     head, tail = x
     # assert head.shape == starts.shape == freqs.shape
     idxs = head >= ((rans_l >> precisions) << 32) * freqs
-    if np.any(idxs) > 0:
+    if np.any(idxs):
         tail = stack_extend(tail, np.uint32(head[idxs]))
         head = np.copy(head)  # Ensure no side-effects
         head[idxs] >>= 32
