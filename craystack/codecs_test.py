@@ -162,6 +162,16 @@ def test_categorical():
     ps = np.reshape(ps, shape + (4,))
     check_codec(shape, cs.Categorical(ps, precision), data)
 
+def test_categorical_new():
+    rng = np.random.RandomState(2)
+    precision = 4
+    shape = (20, 3, 5)
+    weights = rng.random((np.prod(shape), 4))
+    ps = weights / np.sum(weights, axis=-1, keepdims=True)
+    data = np.reshape([rng.choice(4, p=p) for p in ps], shape)
+    weights = np.reshape(weights, shape + (4,))
+    check_codec(shape, cs.CategoricalNew(weights, precision), data)
+
 def test_logistic():
     rng = np.random.RandomState(0)
     coding_precision = 16

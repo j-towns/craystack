@@ -365,31 +365,12 @@ def random_message(flat_len, shape, rng=np.random):
     arr = rng.randint(1 << 32, size=flat_len, dtype='uint32')
     return unflatten(arr, shape)
 
-def _ensure_nonzero_freq_bernoulli(p, precision):
-    p[p == 0] += 1
-    p[p == (1 << precision)] -=1
-    return p
-
-def _bernoulli_cdf(p, precision, safe=True):
-    def cdf(s):
-        ret = np.zeros(np.shape(s), "uint64")
-        onemp = _nearest_int((1 - p[s==1]) * (1 << precision))
-        onemp = (_ensure_nonzero_freq_bernoulli(onemp, precision) if safe
-                 else onemp)
-        ret[s == 1] += onemp
-        ret[s == 2] = 1 << precision
-        return ret
-    return cdf
-
-def _bernoulli_ppf(p, precision, safe=True):
-    onemp = _nearest_int((1 - p) * (1 << precision))
-    onemp = _ensure_nonzero_freq_bernoulli(onemp, precision) if safe else onemp
-    return lambda cf: np.uint64((cf + 0.5) > onemp)
-
 def Bernoulli(p, prec):
     """Codec for Bernoulli distributed data"""
-    enc_statfun = _cdf_to_enc_statfun(_bernoulli_cdf(p, prec))
-    dec_statfun = _bernoulli_ppf(p, prec)
+    onemp = np.clip(_nearest_int((1 - p) * (1 << prec)), 1, (1 << prec) - 1)
+    enc_statfun = _cdf_to_enc_statfun(
+        lambda s: np.choose(np.int64(s), [0, onemp, 1 << prec]))
+    dec_statfun = lambda cf: np.uint64(cf >= onemp)
     return NonUniform(enc_statfun, dec_statfun, prec)
 
 def _cumulative_buckets_from_probs(probs, precision):
@@ -435,6 +416,29 @@ def Categorical(p, prec):
     cumulative_buckets = _cumulative_buckets_from_probs(p, prec)
     enc_statfun = _cdf_to_enc_statfun(_cdf_from_cumulative_buckets(cumulative_buckets))
     dec_statfun = _ppf_from_cumulative_buckets(cumulative_buckets)
+    return NonUniform(enc_statfun, dec_statfun, prec)
+
+# Inverse of np.diff
+def _undiff(x):
+    return np.concatenate([np.zeros_like(x, shape=(*x.shape[:-1], 1)),
+                           np.cumsum(x, -1)], -1)
+
+def CategoricalNew(weights, prec):
+    """
+    Assume that the last dim of weights contains the unnormalized
+    probability vectors, so p = weights / np.sum(weights, axis=-1).
+    """
+    cumweights = _undiff(weights)
+    cumfreqs = _nearest_int((1 << prec) * (cumweights / cumweights[..., -1:]))
+    def enc_statfun(x):
+        lower = np.take_along_axis(cumfreqs, x[..., None], -1)[..., 0]
+        upper = np.take_along_axis(cumfreqs, x[..., None] + 1, -1)[..., 0]
+        return lower, upper - lower
+    def dec_statfun(cf):
+        # One could speed this up for large alphabets by
+        #   (a) Using vectorized binary search, not available in numpy
+        #   (b) Using the alias method
+        return np.argmin(cumfreqs <= cf[..., None], axis=-1) - 1
     return NonUniform(enc_statfun, dec_statfun, prec)
 
 def Logistic_UnifBins(
