@@ -490,7 +490,7 @@ def LogisticMixture_UnifBins(means, log_scales, logit_probs, coding_prec, bin_pr
     dec_statfun = _ppf_from_cumulative_buckets(cumulative_buckets)
     return NonUniform(enc_statfun, dec_statfun, coding_prec)
 
-@lru_cache
+@lru_cache()
 def std_gaussian_buckets(precision):
     """
     Return the endpoints of buckets partitioning the domain of the prior. Each
@@ -498,7 +498,7 @@ def std_gaussian_buckets(precision):
     """
     return norm.ppf(np.linspace(0, 1, (1 << precision) + 1))
 
-@lru_cache
+@lru_cache()
 def std_gaussian_centres(precision):
     """
     Return the medians of buckets partitioning the domain of the prior. Each
