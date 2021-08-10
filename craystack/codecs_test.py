@@ -166,7 +166,7 @@ def test_categorical_new():
     rng = np.random.RandomState(2)
     precision = 4
     shape = (20, 3, 5)
-    weights = rng.random((np.prod(shape), 4))
+    weights = rng.random((np.prod(shape), 4)) + 1
     ps = weights / np.sum(weights, axis=-1, keepdims=True)
     data = np.reshape([rng.choice(4, p=p) for p in ps], shape)
     weights = np.reshape(weights, shape + (4,))
