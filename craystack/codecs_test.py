@@ -11,7 +11,7 @@ from craystack import rans
 def check_codec(head_shape, codec, data):
     message = cs.base_message(head_shape)
     push, pop = codec
-    message_, data_ = pop(push(message, data))
+    message_, data_ = pop(*push(message, data))
     assert_message_equal(message, message_)
     np.testing.assert_equal(data, data_)
 
@@ -84,7 +84,7 @@ def test_substack():
     data = rng.randint(1 << prec, size=(n_data, 2, 4), dtype='uint64')
     view_fun = lambda h: h[0]
     append, pop = cs.substack(cs.repeat(cs.Uniform(prec), n_data), view_fun)
-    message_ = append(message, data)
+    message_, = append(message, data)
     np.testing.assert_array_equal(message_[0][1], message[0][1])
     message_, data_ = pop(message_)
     np.testing.assert_equal(message, message_)
@@ -273,7 +273,7 @@ def test_flatten_unflatten():
     some_bits = rng.randint(1 << p, size=(n,) + shape).astype(np.uint64)
     freqs = np.ones(shape, dtype="uint64")
     for b in some_bits:
-        state = cs.rans.push(state, b, freqs, p)
+        state, = cs.rans.push(state, b, freqs, p)
     flat = cs.flatten(state)
     flat_ = cs.rans.flatten(state)
     print('Normal flat len: {}'.format(len(flat_) * 32))
@@ -301,7 +301,7 @@ def test_resize_head_1d(old_size, new_size, depth=1000):
 
     other_bits_push, _ = cs.repeat(cs.Uniform(p), depth)
 
-    message = other_bits_push(message, bits)
+    message, = other_bits_push(message, bits)
 
     resized = cs.codecs._resize_head_1d(message, new_size)
     reconstructed = cs.codecs._resize_head_1d(resized, old_size)
@@ -319,7 +319,7 @@ def test_reshape_head(old_shape, new_shape, depth=1000):
 
     other_bits_push, _ = cs.repeat(cs.Uniform(p), depth)
 
-    message = other_bits_push(message, bits)
+    message, = other_bits_push(message, bits)
 
     resized = cs.reshape_head(message, new_shape)
     reconstructed = cs.reshape_head(resized, old_shape)
@@ -336,7 +336,7 @@ def test_flatten_unflatten(shape, depth=1000):
 
     other_bits_push, _ = cs.repeat(cs.Uniform(p), depth)
 
-    message = other_bits_push(message, bits)
+    message, = other_bits_push(message, bits)
 
     flattened = cs.flatten(message)
     reconstructed = cs.unflatten(flattened, shape)
@@ -351,7 +351,7 @@ def test_flatten_rate():
     init_message = cs.base_message((1,))
 
     for datum in init_data:
-        init_message = cs.Uniform(16).push(init_message, datum)
+        init_message, = cs.Uniform(16).push(init_message, datum)
 
     l_init = len(cs.flatten(init_message))
 
@@ -360,13 +360,13 @@ def test_flatten_rate():
 
     message = init_message
     for p, datum in zip(ps, data):
-        message = cs.Bernoulli(p, 14).push(message, datum)
+        message, = cs.Bernoulli(p, 14).push(message, datum)
 
     l_scalar = len(cs.flatten(message))
 
     message = init_message
     message = cs.reshape_head(message, (n, 1))
-    message = cs.Bernoulli(ps, 14).push(message, data)
+    message, = cs.Bernoulli(ps, 14).push(message, data)
 
     l_vector = len(cs.flatten(message))
 

@@ -61,7 +61,7 @@ def NonUniform(enc_statfun, dec_statfun, precision):
 
     def push(message, symbol):
         start, freq = enc_statfun(symbol)
-        return vrans.push(message, start, freq, precision)
+        return vrans.push(message, start, freq, precision),
 
     def pop(message):
         cf, pop_fun = vrans.pop(message, precision)
@@ -131,8 +131,8 @@ def from_generator(generator_fun):
             codec_stack.append(codec)
             done, codec = safe_send(g, symbol)
         for codec, symbol in reversed(list(zip(codec_stack, result))):
-            message = codec.push(message, symbol)
-        return message
+            message, = codec.push(message, symbol)
+        return message,
 
     def pop(message):
         g = generator_fun()
@@ -154,16 +154,17 @@ def substack(codec, view_fun):
     view_fun = lambda head: head[0]
     to run the codec on only the first element of the head
     """
-    def push(message, data, *args, **kwargs):
+    def push(message, data, *context):
         head, tail = message
         subhead, update = util.view_update(head, view_fun)
-        subhead, tail = codec.push((subhead, tail), data, *args, **kwargs)
-        return update(subhead), tail
-    def pop(message, *args, **kwargs):
+        (subhead, tail), *context = codec.push((subhead, tail), data, *context)
+        return ((update(subhead), tail), *context)
+
+    def pop(message, *context):
         head, tail = message
         subhead, update = util.view_update(head, view_fun)
-        (subhead, tail), data = codec.pop((subhead, tail), *args, **kwargs)
-        return (update(subhead), tail), data
+        (subhead, tail), data, *context = codec.pop((subhead, tail), *context)
+        return ((update(subhead), tail), data, *context)
     return Codec(push, pop)
 
 def parallel(codecs, view_funs):
@@ -179,8 +180,8 @@ def parallel(codecs, view_funs):
     def push(message, symbols):
         assert len(symbols) == len(codecs)
         for codec, symbol in reversed(list(zip(codecs, symbols))):
-            message = codec.push(message, symbol)
-        return message
+            message, = codec.push(message, symbol)
+        return message,
     def pop(message):
         symbols = []
         for codec in codecs:
@@ -234,8 +235,8 @@ def BigUniform(precision):
             s = (symbol >> lower) & ((1 << 16) - 1)
             diff = np.where(precision >= lower, precision - lower, 0)
             p = np.minimum(diff, 16)
-            message = Uniform(p).push(message, s)
-        return message
+            message, = Uniform(p).push(message, s)
+        return message,
 
     def pop(message):
         symbol = 0
@@ -291,10 +292,10 @@ def Benford64():
     def push(message, x):
         x_len = np.uint64(np.log2(x))
         x = x & ((1 << x_len) - 1)
-        message = _benford_high_bits(4, 16).push(message, x >> (x_len - 4))
-        message = BigUniform(x_len - 4).push(message, x & ((1 << (x_len - 4)) - 1))
-        message = length_push(message, x_len - 31)
-        return message
+        message, = _benford_high_bits(4, 16).push(message, x >> (x_len - 4))
+        message, = BigUniform(x_len - 4).push(message, x & ((1 << (x_len - 4)) - 1))
+        message, = length_push(message, x_len - 31)
+        return message,
 
     def pop(message):
         message, x_len = length_pop(message)
@@ -341,7 +342,7 @@ def _resize_head_1d(message, size):
     codecs = _fold_codecs(sizes)
     if size < np.size(head):
         for (push, _), new_size in reversed(list(zip(codecs, sizes[:-1]))):
-            head, tail = push((head[:new_size], tail), head[new_size:])
+            (head, tail), = push((head[:new_size], tail), head[new_size:])
     elif size > np.size(head):
         for _, pop in codecs:
             (head, tail), head_ex = pop((head, tail))
@@ -609,8 +610,8 @@ def AutoRegressive(param_fn, data_shape, params_shape, elem_idxs, elem_codec):
         for idx in reversed(elem_idxs):
             elem_params = all_params[idx]
             elem_push, _ = elem_codec(elem_params, idx)
-            message = elem_push(message, data[idx].astype('uint64'))
-        return message
+            message, = elem_push(message, data[idx].astype('uint64'))
+        return message,
 
     def pop(message):
         data = np.zeros(data_shape, dtype=np.uint64)
