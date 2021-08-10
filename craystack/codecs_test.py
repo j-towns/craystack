@@ -371,3 +371,16 @@ def test_flatten_rate():
     l_vector = len(cs.flatten(message))
 
     assert (l_vector - l_init) / (l_scalar - l_init) - 1 < 0.001
+
+def test_multiset_codec():
+    multiset = cs.build_multiset([0, 255, 128, 128])
+
+    ans_state = rans.base_message(shape=(1,))
+    symbol_codec = cs.Uniform(8)
+    codec = cs.Multiset(symbol_codec)
+
+    ans_state, = codec.push(ans_state, multiset)
+    ans_state, multiset_decoded = codec.pop(ans_state, multiset_size=4)
+
+    assert cs.check_multiset_equality(multiset, multiset_decoded)
+
