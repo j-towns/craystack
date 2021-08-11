@@ -37,13 +37,36 @@ gen_net = torch_fun_to_numpy_fun(model.decode)
 
 obs_codec = lambda p: cs.Bernoulli(p, bernoulli_precision)
 
+class ArraySymbol:
+    def __init__(self, arr: np.ndarray):
+        self.arr = arr
+
+    def __lt__(self, other: np.ndarray):
+        return self.arr.tobytes() < other.arr.tobytes()
+
+    def __gt__(self, other: np.ndarray):
+        return self.arr.tobytes() > other.arr.tobytes()
+
+    def __eq__(self, other):
+        return (self.arr == other.arr).all()
+
+def ArrayCodec(codec):
+    def push(message, x):
+        return codec.push(message, x.arr)
+
+    def pop(message):
+        message, x = codec.pop(message)
+        return message, ArraySymbol(x)
+
+    return cs.Codec(push, pop)
+
 def vae_view(head):
     return ag_tuple((np.reshape(head[:latent_size], latent_shape),
                      np.reshape(head[latent_size:], obs_shape)))
 
-vae_append, vae_pop = cs.repeat(cs.substack(
-    bb_ans.VAE(gen_net, rec_net, obs_codec, prior_precision, q_precision),
-    vae_view), num_batches)
+vae_append, vae_pop = cs.Multiset(cs.substack(ArrayCodec(
+    bb_ans.VAE(gen_net, rec_net, obs_codec, prior_precision, q_precision)),
+    vae_view))
 
 # Codec for adding extra bits to the start of the chain (necessary for bits
 # back).
@@ -53,14 +76,19 @@ other_bits_append, _ = cs.substack(cs.Uniform(q_precision), lambda h: vae_view(h
 images = datasets.MNIST(sys.argv[1], train=False, download=True).data.numpy()
 images = np.uint64(rng.random_sample(np.shape(images)) < images / 255.)
 images = np.split(np.reshape(images, (num_images, -1)), num_batches)
+images = list(map(ArraySymbol, images))
 
 ## Encode
 # Initialize message with some 'extra' bits
 encode_t0 = time.time()
+
 init_message = cs.base_message(obs_size + latent_size)
 
+# Build multiset
+multiset = cs.build_multiset(images)
+
 # Encode the mnist images
-message, = vae_append(init_message, images)
+message, = vae_append(init_message, multiset)
 
 flat_message = cs.flatten(message)
 encode_t = time.time() - encode_t0
@@ -75,9 +103,9 @@ print("This is {:.4f} bits per pixel.".format(message_len / num_pixels))
 decode_t0 = time.time()
 message = cs.unflatten(flat_message, obs_size + latent_size)
 
-message, images_ = vae_pop(message)
+message, multiset_decoded = vae_pop(message, multiset_size=num_batches)
 decode_t = time.time() - decode_t0
 
 print('All decoded in {:.2f}s.'.format(decode_t))
 
-np.testing.assert_equal(images, images_)
+assert cs.check_multiset_equality(multiset, multiset_decoded)

@@ -23,16 +23,16 @@ def BBANS(prior, likelihood, posterior):
         _, posterior_pop = posterior(data)
         message, latent = posterior_pop(message)
         likelihood_push, _ = likelihood(latent)
-        message = likelihood_push(message, data)
-        message = prior_push(message, latent)
-        return message
+        message, = likelihood_push(message, data)
+        message, = prior_push(message, latent)
+        return message,
 
     def pop(message):
         message, latent = prior_pop(message)
         likelihood_pop = likelihood(latent).pop
         message, data = likelihood_pop(message)
         posterior_push = posterior(data).push
-        message = posterior_push(message, latent)
+        message, = posterior_push(message, latent)
         return message, data
     return Codec(push, pop)
 
