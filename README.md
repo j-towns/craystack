@@ -1,6 +1,6 @@
 __Informal disclaimer:__ Craystack is experimental software for prototyping and research in lossless compression. We will change (and probably break) parts of Craystack, and do not make any guarantees about API stability.
 
-# Craystack [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.4572729.svg)](https://doi.org/10.5281/zenodo.4572729) [![craystack](https://github.com/j-towns/craystack/actions/workflows/tests.yml/badge.svg)](https://github.com/j-towns/craystack/actions/workflows/tests.yml)
+# Craystack [![DOI](https://zenodo.org/badge/155861648.svg)](https://zenodo.org/badge/latestdoi/155861648) [![craystack](https://github.com/j-towns/craystack/actions/workflows/tests.yml/badge.svg)](https://github.com/j-towns/craystack/actions/workflows/tests.yml)
 
 The basic building blocks for doing lossless compression are
 
