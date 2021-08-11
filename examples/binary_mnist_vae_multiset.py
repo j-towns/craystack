@@ -68,10 +68,6 @@ vae_append, vae_pop = cs.Multiset(cs.substack(ArrayCodec(
     bb_ans.VAE(gen_net, rec_net, obs_codec, prior_precision, q_precision)),
     vae_view))
 
-# Codec for adding extra bits to the start of the chain (necessary for bits
-# back).
-other_bits_append, _ = cs.substack(cs.Uniform(q_precision), lambda h: vae_view(h)[0])
-
 ## Load mnist images
 images = datasets.MNIST(sys.argv[1], train=False, download=True).data.numpy()
 images = np.uint64(rng.random_sample(np.shape(images)) < images / 255.)
