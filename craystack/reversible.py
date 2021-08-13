@@ -74,6 +74,65 @@ swap = restructure(('x', 'y'), ('y', 'x'))
 def serial(steps):
     return reduce(compose, steps)
 
+def from_generator(generator_fun):
+    """
+    This allows defining a Reversible using a Python generator function. The
+    generator must `yield` Reversibles with signature
+
+      a <-> (a, b)
+
+    and from_generator forms a list of the type 'b' results, resulting
+    in a reversible with signature
+
+      a <-> (a, [b])
+
+    The 'b' symbols resulting from the yielded Reversibles can be used by the
+    generator, by assigning the result of the yield expression, for example, we
+    might firstly decode the precision of a Uniformly distributed symbol, then
+    decode the symbol itself:
+
+    >>> def gen_fun():
+    ...     prec = (yield cs.Uniform(16))
+    ...     yield cs.Uniform(prec)
+    >>>
+    >>> dependent_codec = from_generator(gen_fun)
+
+    In this way, from_generator can be used to express general reversible
+    autoregressive processes.
+    """
+    def safe_next(generator):
+        return safe_send(generator, None)
+
+    def safe_send(generator, b):
+        try: n = generator.send(b)
+        except StopIteration: return True, None
+        return False, n
+
+    def do(a):
+        g = generator_fun()
+        bs = []
+        done, r = safe_next(g)
+        while not done:
+            a, b = r.do(a)
+            bs.append(b)
+            done, r = safe_send(g, b)
+        return a, bs
+
+    def undo(a_and_bs):
+        a, bs = a_and_bs
+        g = generator_fun()
+        r_stack = []
+        done, r = safe_next(g)
+        for b in bs:
+            assert not done
+            r_stack.append(r)
+            done, r = safe_send(g, b)
+        for r, b in reversed(list(zip(r_stack, bs))):
+            a = r.undo((a, b))
+        return a
+
+    return Reversible(do, undo)
+
 def split(indices_or_sections, axis=0):
     def do(arr):
         return np.split(arr, indices_or_sections, axis=axis)
@@ -107,3 +166,33 @@ def bb_ans(prior, likelihood, posterior):
         keep_right(lambda x: invert(posterior(x))),
         # (message, x)
     ])
+
+def iconoclasm(priors, likelihoods, posterior):
+    post_init_state, post_update = posterior
+    def generator_fun():
+        post_state = post_init_state
+        x = yield serial([# m
+                          priors[0],
+                          # (m, z0)
+                          keep_right(likelihoods[0]),
+                          # ((m, x0), z0)
+                          restructure((('m', 'x0'), 'z0'),
+                                      (('m', 'z0'), 'x0'))])
+        post_state, post = post_update(0, post_state, x)
+        for t in range(1, len(priors)):
+            x = yield serial([
+                # (m, z_{t-1})
+                keep_right(priors[t]),
+                # ((m, z_t), z_{t-1})
+                restructure((('m', 'z_t'), 'z_t-1'), (('m', 'z_t-1'), 'z_t')),
+                # ((m, z_{t-1}), z_t)
+                keep_right(lambda z_t: invert(post(z_t))),
+                # (m, z_t)
+                keep_right(likelihoods[t]),
+                # ((m, x_t), z_t)
+                restructure((('m', 'x_t'), 'z_t'), (('m', 'z_t'), 'x_t')),
+            ])
+            post_state, post = post_update(0, post_state, x)
+        # (m, z_T)
+        yield invert(post)
+    return from_generator(generator_fun)
