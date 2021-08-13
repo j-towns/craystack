@@ -77,16 +77,16 @@ def serial(steps):
 def from_generator(generator_fun):
     """
     This allows defining a Reversible using a Python generator function. The
-    generator must `yield` Reversibles with signature
+    generator must `yield` Reversibles with signatures
 
-      a <-> (a, b)
+      a0 <-> (a1, b1), a1 <-> (a2, b2), ..., aN-1 <-> (aN, bN)
 
-    and from_generator forms a list of the type 'b' results, resulting
+    and from_generator.do accumulates a list of the type b results, resulting
     in a reversible with signature
 
-      a <-> (a, [b])
+      a0 <-> (aN, [b1, b2, ..., bN])
 
-    The 'b' symbols resulting from the yielded Reversibles can be used by the
+    The b symbols resulting from the yielded Reversibles can be used by the
     generator, by assigning the result of the yield expression, for example, we
     might firstly decode the precision of a Uniformly distributed symbol, then
     decode the symbol itself:
