@@ -17,7 +17,7 @@ q_precision = 14
 
 num_images = 10000
 num_pixels = num_images * 784
-batch_size = 1
+batch_size = 10
 assert num_images % batch_size == 0
 num_batches = num_images // batch_size
 
