@@ -56,7 +56,10 @@ pip install pytest
 # Example: compress the MNIST test set in a few seconds using BB-ANS
 Note: this requires pytorch to be installed.
 
-In the examples directory, run `python binary_mnist_vae.py`. This compresses the MNIST test set using a small VAE model, using the BB-ANS algorithm. This uses the [VAE codec](craystack/bb_ans.py#L39), and runs in a few seconds thanks to the vectorization of craystack.
+In the examples directory, run `python binary_mnist_vae.py mnist_data`. This
+compresses the MNIST test set using a small VAE model, using the BB-ANS
+algorithm. This uses the [VAE codec](craystack/bb_ans.py#L39), and runs in a
+few seconds thanks to the vectorization of craystack.
 
 # Authors
 Craystack was written by [Jamie Townsend](https://j-towns.github.io), [Tom Bird](https://tom-bird.github.io/) and [Julius Kunze](https://juliuskunze.com/). If you use Craystack in your research, please cite [this paper](https://openreview.net/forum?id=r1lZgyBYwS). Bibtex:
