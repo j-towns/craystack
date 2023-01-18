@@ -183,8 +183,8 @@ def SamplingWithoutReplacement():
     '''
     Encodes and pops onto the ANS state using the empirical
     distribution of symbols in the multiset.
-    Before an push, the symbol to be pushd is inserted into the multiset.
-    After a pop, the popd symbol is removed from the multiset. Therefore,
+    Before a push, the symbol to be pushed is inserted into the multiset.
+    After a pop, the poped symbol is removed from the multiset. Therefore,
     a pop performs sampling without replacement, while push inverts it.
     The context is the multiset, i.e. *context = multiset
     '''
