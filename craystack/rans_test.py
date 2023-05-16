@@ -64,3 +64,34 @@ def test_base_message():
     num_bits = num_lower_bits*100_000
     assert (head_rnd >> (num_lower_bits - 1) == 1).all()
     assert  0.48 < popcount(head_rnd)/num_bits < 0.52
+
+def test_finer_prec():
+    # The renormalization in rans.push_with_finer_prec will keep moving
+    # bits into the tail until the head is less than
+    # (rans_l // 3) << r_t      == 3074457342754947072
+
+    # However, the true upper bound on the head after rans.pop_with_finer_prec
+    # is less strict, it's equal to
+    # ((1 << r_s) - 1) // 3 + 1 == 3074457345618258603
+
+    # We can break the inverse property by constructing a message and
+    # pop such that the result is between the two values above. That means
+    # that push thinks it needs to undo a renorm when actually no renorm
+    # took place in the pop:
+
+    # Set s to the largest possible value
+    m = np.uint64([(1 << 63) - 1]), ()
+
+    # Use N = 3 as the denominator
+    N = 3
+
+    u, popfun = rans.pop_with_finer_prec(m, N)
+    m_ = popfun(u, 1)
+
+    # u  == array([1], dtype=uint64)
+    # m_ == (array([3074457345618258602], dtype=uint64), ())
+    # s is between the two values above, and that causes a problem...
+
+    m__ = rans.push_with_finer_prec(m_, u, 1, N)
+
+    assert rans.message_equal(m, m__), 'm = ' + str(m) + '\n m__ = ' + str(m__)
