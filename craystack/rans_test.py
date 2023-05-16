@@ -66,6 +66,7 @@ def test_base_message():
     assert  0.48 < popcount(head_rnd)/num_bits < 0.52
 
 def test_finer_prec():
+    # Regressiom test.
     # The renormalization in rans.push_with_finer_prec will keep moving
     # bits into the tail until the head is less than
     # (rans_l // 3) << r_t      == 3074457342754947072
